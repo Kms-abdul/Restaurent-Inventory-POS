@@ -4,6 +4,8 @@ import { useState, FormEvent } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 
+import Image from 'next/image'
+
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -28,33 +30,22 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="login-root">
-      {/* Left branded panel */}
-      <div className="login-left">
-        <div className="login-wordmark">
-          <div className="login-wordmark-icon">R</div>
-          <div>
-            <div className="login-wordmark-text">RestaurantOS</div>
-            <div className="login-wordmark-sub">Management Platform</div>
-          </div>
+    <div className="login-page-container">
+      <div className="login-card-wrap">
+        {/* Main Header Logo */}
+        <div className="login-centered-logo">
+          <Image
+            src="/Kitchoralogo.png"
+            alt="Kitchora Logo"
+            width={240}
+            height={240}
+            className="login-top-logo"
+            priority
+          />
         </div>
 
-        <div className="login-left-copy">
-          <h2>Every order,<br />every branch,<br />one platform.</h2>
-          <p>
-            Multi-branch POS, live kitchen display, inventory tracking,
-            and daily reporting — built for restaurant operations.
-          </p>
-        </div>
-
-        <div className="login-left-footer">
-          © {new Date().getFullYear()} RestaurantOS
-        </div>
-      </div>
-
-      {/* Right form panel */}
-      <div className="login-right">
-        <div className="login-form-wrap">
+        {/* Form Box */}
+        <div className="login-form-box">
           <div className="login-form-header">
             <h1>Sign in</h1>
             <p>Enter your credentials to access your workspace</p>
@@ -107,6 +98,11 @@ export default function LoginPage() {
               )}
             </button>
           </form>
+
+          {/* Multi-branch POS feature callout */}
+          <div className="login-feature-badge">
+            Multi-branch POS, live kitchen display, inventory tracking, and daily reporting — built for restaurant operations.
+          </div>
         </div>
       </div>
     </div>
