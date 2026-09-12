@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { cache } from 'react'
 import type { UserContext, PermissionKey } from '@/types/database'
 
 export async function createClient() {
@@ -52,26 +53,32 @@ export async function createServiceClient() {
 
 /**
  * Loads the full UserContext for the currently authenticated user.
-  * Returns null if not authenticated OR if the database schema is not yet applied.
-  */
-export async function getUserContext(): Promise<UserContext | null> {
+ * Memoized per request using React cache() and queries fetched concurrently.
+ */
+export const getUserContext = cache(async (): Promise<UserContext | null> => {
   try {
     const supabase = await createClient()
 
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return null
 
-    // Load profile
-    let { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single()
+    // Run user membership & profile queries in parallel to drastically minimize latency
+    const [profileRes, platformRes, restaurantRes, branchRes] = await Promise.all([
+      supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
+      supabase.from('platform_members').select('id').eq('user_id', user.id).eq('is_active', true).maybeSingle(),
+      supabase.from('restaurant_members').select('restaurant_id, restaurants(*)').eq('user_id', user.id).eq('is_active', true).maybeSingle(),
+      supabase.from('branch_members').select(`
+        branch_id,
+        role_id,
+        branches(*, restaurants(*)),
+        roles(role_permissions(permission))
+      `).eq('user_id', user.id).eq('is_active', true).maybeSingle(),
+    ])
 
-    // Self-healing: if the user exists in auth but their profile was wiped out 
-    // (e.g. during a DB reset), recreate it here.
+    let profile = profileRes.data
+
+    // Self-healing: if the user exists in auth but their profile was missing, recreate it
     if (!profile) {
-      // Use service role key to bypass RLS, since normal users can't INSERT into profiles
       const { createClient: createSupabaseClient } = await import('@supabase/supabase-js')
       const adminSupabase = createSupabaseClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -94,14 +101,7 @@ export async function getUserContext(): Promise<UserContext | null> {
       profile = newProfile
     }
 
-    // Check if super admin
-    const { data: platformMember } = await supabase
-      .from('platform_members')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('is_active', true)
-      .maybeSingle()
-
+    const platformMember = platformRes.data
     const isSuperAdmin = !!platformMember
 
     if (isSuperAdmin) {
@@ -118,14 +118,7 @@ export async function getUserContext(): Promise<UserContext | null> {
       }
     }
 
-    // Check restaurant admin membership
-    const { data: restaurantMember } = await supabase
-      .from('restaurant_members')
-      .select('restaurant_id, restaurants(*)')
-      .eq('user_id', user.id)
-      .eq('is_active', true)
-      .maybeSingle()
-
+    const restaurantMember = restaurantRes.data
     if (restaurantMember) {
       const restaurant = Array.isArray(restaurantMember.restaurants)
         ? restaurantMember.restaurants[0]
@@ -140,23 +133,11 @@ export async function getUserContext(): Promise<UserContext | null> {
         branchId: null,
         branch: null,
         roleId: null,
-        permissions: new Set<PermissionKey>(), // restaurant admins have all access via RLS
+        permissions: new Set<PermissionKey>(),
       }
     }
 
-    // Check branch membership
-    const { data: branchMember } = await supabase
-      .from('branch_members')
-      .select(`
-      branch_id,
-      role_id,
-      branches(*, restaurants(*)),
-      roles(role_permissions(permission))
-    `)
-      .eq('user_id', user.id)
-      .eq('is_active', true)
-      .maybeSingle()
-
+    const branchMember = branchRes.data
     if (branchMember) {
       const branch = Array.isArray(branchMember.branches)
         ? branchMember.branches[0]
@@ -201,8 +182,7 @@ export async function getUserContext(): Promise<UserContext | null> {
       permissions: new Set<PermissionKey>(),
     }
   } catch (err) {
-    // Database schema not yet applied, or connection error — treat as unauthenticated
-    console.warn('[getUserContext] DB error (schema may not be applied yet):', err)
+    console.warn('[getUserContext] DB error:', err)
     return null
   }
-}
+})

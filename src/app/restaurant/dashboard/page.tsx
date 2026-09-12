@@ -9,37 +9,38 @@ export default async function RestaurantDashboard() {
 
   const supabase = await createClient()
 
-  // Load branches for this restaurant
-  const { data: branches } = await supabase
-    .from('branches')
-    .select('id, name, city, is_active')
-    .eq('restaurant_id', ctx.restaurantId)
-    .eq('is_active', true)
-    .order('name')
-
-  // Load today's orders across all branches
+  // Load branches, today's orders, and low stock count concurrently in parallel
   const today = new Date()
   today.setHours(0, 0, 0, 0)
 
-  const { data: todayOrders } = await supabase
-    .from('orders')
-    .select('id, total_amount, status, fulfillment, branch_id')
-    .eq('restaurant_id', ctx.restaurantId)
-    .gte('created_at', today.toISOString())
+  const [branchesRes, ordersRes, lowStockRes] = await Promise.all([
+    supabase
+      .from('branches')
+      .select('id, name, city, is_active')
+      .eq('restaurant_id', ctx.restaurantId)
+      .eq('is_active', true)
+      .order('name'),
+    supabase
+      .from('orders')
+      .select('id, total_amount, status, fulfillment, branch_id')
+      .eq('restaurant_id', ctx.restaurantId)
+      .gte('created_at', today.toISOString()),
+    supabase
+      .from('inventory_current_stock')
+      .select('*', { count: 'exact', head: true })
+      .eq('restaurant_id', ctx.restaurantId)
+      .eq('is_low_stock', true),
+  ])
 
-  const orders = todayOrders ?? []
-  const totalRevenue = orders
+  const branches = branchesRes.data
+  const todayOrders = ordersRes.data ?? []
+  const lowStockCount = lowStockRes.count
+
+  const totalRevenue = todayOrders
     .filter(o => o.status === 'settled')
     .reduce((sum, o) => sum + o.total_amount, 0)
-  const totalOrders = orders.length
-  const pendingKitchen = orders.filter(o => ['pending', 'cooking'].includes(o.fulfillment)).length
-
-  // Low stock count
-  const { count: lowStockCount } = await supabase
-    .from('inventory_current_stock')
-    .select('*', { count: 'exact', head: true })
-    .eq('restaurant_id', ctx.restaurantId)
-    .eq('is_low_stock', true)
+  const totalOrders = todayOrders.length
+  const pendingKitchen = todayOrders.filter(o => ['pending', 'cooking'].includes(o.fulfillment)).length
 
   return (
     <div className="ra-page">
