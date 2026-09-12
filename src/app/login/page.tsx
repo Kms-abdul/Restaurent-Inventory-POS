@@ -37,8 +37,8 @@ export default function LoginPage() {
           <Image
             src="/Kitchoralogo.png"
             alt="Kitchora Logo"
-            width={240}
-            height={240}
+            width={280}
+            height={280}
             className="login-top-logo"
             priority
           />
@@ -99,10 +99,10 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Multi-branch POS feature callout */}
-          <div className="login-feature-badge">
+          {/* Multi-branch POS feature callout text (no box background) */}
+          <p className="login-feature-text">
             Multi-branch POS, live kitchen display, inventory tracking, and daily reporting — built for restaurant operations.
-          </div>
+          </p>
         </div>
       </div>
     </div>
