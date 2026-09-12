@@ -155,39 +155,39 @@ export default function KitchenDisplay({ orders: initialOrders, branchId, canUpd
 
       <div className="kds-board">
         <div className="kds-column">
-          <div className="kds-column-header" style={{ borderColor: '#f59e0b' }}>
-            <span>⏳ Pending</span>
+          <div className="kds-column-header" style={{ borderColor: '#92400E' }}>
+            <span>Pending</span>
             <span className="kds-count">{pending.length}</span>
           </div>
-          <div className="kds-column-body">
+          <div className="kds-column-body" style={{ borderColor: '#1E293B' }}>
             {pending.length === 0
-              ? <div className="kds-empty">No pending orders</div>
+              ? <div className="kds-empty">Queue clear</div>
               : renderOrders(pending, 'pending')
             }
           </div>
         </div>
 
         <div className="kds-column">
-          <div className="kds-column-header" style={{ borderColor: '#3b82f6' }}>
-            <span>🔥 Cooking</span>
+          <div className="kds-column-header" style={{ borderColor: '#1D4ED8' }}>
+            <span>Cooking</span>
             <span className="kds-count">{cooking.length}</span>
           </div>
-          <div className="kds-column-body">
+          <div className="kds-column-body" style={{ borderColor: '#1E293B' }}>
             {cooking.length === 0
-              ? <div className="kds-empty">Nothing cooking</div>
+              ? <div className="kds-empty">Nothing on the pass</div>
               : renderOrders(cooking, 'cooking')
             }
           </div>
         </div>
 
         <div className="kds-column">
-          <div className="kds-column-header" style={{ borderColor: '#22c55e' }}>
-            <span>✅ Ready</span>
+          <div className="kds-column-header" style={{ borderColor: '#166534' }}>
+            <span>Ready</span>
             <span className="kds-count">{ready.length}</span>
           </div>
-          <div className="kds-column-body">
+          <div className="kds-column-body" style={{ borderColor: '#1E293B' }}>
             {ready.length === 0
-              ? <div className="kds-empty">Nothing ready</div>
+              ? <div className="kds-empty">Nothing plated yet</div>
               : renderOrders(ready, 'ready')
             }
           </div>
@@ -195,36 +195,36 @@ export default function KitchenDisplay({ orders: initialOrders, branchId, canUpd
       </div>
 
       <style jsx>{`
-        .kds-root { display: flex; flex-direction: column; height: 100%; background: #f8fafc; font-family: 'Inter', sans-serif; color: #0f172a; overflow: hidden; }
-        .kds-header { display: flex; align-items: center; gap: 0.75rem; padding: 1rem 1.5rem; border-bottom: 1px solid #e2e8f0; flex-shrink: 0; background: #ffffff; }
-        .kds-header h1 { font-family: 'Outfit', sans-serif; font-size: 1.4rem; font-weight: 800; color: #0f172a; }
-        .kds-live-dot { width: 8px; height: 8px; border-radius: 50%; background: #16a34a; box-shadow: 0 0 8px rgba(22, 163, 74, 0.6); animation: pulse 2s infinite; }
-        @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.4} }
-        .kds-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; padding: 1rem; flex: 1; overflow: hidden; }
+        .kds-root { display: flex; flex-direction: column; height: 100%; background: #0F172A; font-family: 'Inter', sans-serif; color: #E2E8F0; overflow: hidden; }
+        .kds-header { display: flex; align-items: center; gap: 0.75rem; padding: 0.875rem 1.5rem; border-bottom: 1px solid #1E293B; flex-shrink: 0; background: #0F172A; }
+        .kds-header h1 { font-family: 'Outfit', sans-serif; font-size: 1.1rem; font-weight: 800; color: #F1F5F9; letter-spacing: -0.01em; text-transform: uppercase; letter-spacing: 0.04em; }
+        .kds-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #4ADE80; box-shadow: 0 0 10px rgba(74, 222, 128, 0.6); animation: kds-pulse 2s infinite; margin-left: auto; }
+        @keyframes kds-pulse { 0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(0.8)} }
+        .kds-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; padding: 0.875rem; flex: 1; overflow: hidden; }
         .kds-column { display: flex; flex-direction: column; min-height: 0; }
-        .kds-column-header { display: flex; align-items: center; justify-content: space-between; padding: 0.65rem 1rem; border-radius: 0.75rem 0.75rem 0 0; border: 1px solid; border-bottom: none; background: #ffffff; font-weight: 700; font-size: 0.9rem; color: #0f172a; }
-        .kds-count { background: #f1f5f9; border-radius: 1rem; padding: 0.1rem 0.55rem; font-size: 0.8rem; color: #334155; font-weight: 700; }
-        .kds-column-body { display: flex; flex-direction: column; gap: 0.75rem; padding: 0.75rem; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 0.75rem 0.75rem; overflow-y: auto; flex: 1; background: #f1f5f9; }
-        .kds-empty { text-align: center; color: #94a3b8; font-size: 0.875rem; padding: 2rem; font-weight: 500; }
-        .kds-card { background: #ffffff; border: 1.5px solid; border-radius: 0.85rem; padding: 1rem; display: flex; flex-direction: column; gap: 0.6rem; transition: transform 0.15s, box-shadow 0.15s; box-shadow: 0 2px 6px rgba(0,0,0,0.04); }
-        .kds-card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-        .kds-card.late { animation: flash 2s ease-in-out infinite; }
-        @keyframes flash { 0%,100%{background:#ffffff}50%{background:#fef2f2} }
+        .kds-column-header { display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 0.875rem; border-radius: 4px 4px 0 0; border-left: 3px solid; border-right: 1px solid #1E293B; border-top: 1px solid #1E293B; background: #1E293B; font-weight: 700; font-size: 0.72rem; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.1em; }
+        .kds-count { background: #0F172A; border-radius: 3px; padding: 0.1rem 0.45rem; font-size: 0.78rem; color: #64748B; font-weight: 700; min-width: 22px; text-align: center; font-family: 'Outfit', sans-serif; }
+        .kds-column-body { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem; border-left: 1px solid #1E293B; border-right: 1px solid #1E293B; border-bottom: 1px solid #1E293B; border-radius: 0 0 4px 4px; overflow-y: auto; flex: 1; background: #020617; }
+        .kds-empty { text-align: center; color: #1E293B; font-size: 0.78rem; padding: 2.5rem 1rem; font-weight: 500; }
+        .kds-card { background: #1E293B; border: 1px solid #334155; border-radius: 4px; padding: 0.875rem; display: flex; flex-direction: column; gap: 0.55rem; transition: border-color 0.12s; }
+        .kds-card:hover { border-color: #475569; }
+        .kds-card.late { animation: kds-flash 2s ease-in-out infinite; }
+        @keyframes kds-flash { 0%,100%{background:#1E293B}50%{background:#2D1515} }
         .kds-card-header { display: flex; align-items: center; justify-content: space-between; }
-        .kds-order-no { font-family: 'Outfit', sans-serif; font-size: 1.3rem; font-weight: 800; color: #0f172a; }
-        .kds-meta { display: flex; align-items: center; gap: 0.5rem; }
-        .kds-table { font-size: 0.78rem; background: #f1f5f9; border: 1px solid #cbd5e1; padding: 0.15rem 0.5rem; border-radius: 0.35rem; color: #334155; font-weight: 600; }
-        .kds-elapsed { font-size: 0.8rem; color: #64748b; font-weight: 500; }
-        .kds-elapsed.late-text { color: #dc2626; font-weight: 700; }
-        .kds-items { display: flex; flex-direction: column; gap: 0.4rem; }
-        .kds-item { display: flex; align-items: baseline; gap: 0.4rem; font-size: 0.9rem; color: #1e293b; }
-        .kds-item-qty { font-weight: 800; color: #7c3aed; min-width: 1.5rem; }
-        .kds-item-name { font-weight: 600; }
-        .kds-item-note { font-size: 0.78rem; color: #b45309; padding-left: 1.9rem; font-weight: 500; }
-        .kds-order-note { font-size: 0.8rem; color: #475569; padding: 0.4rem 0.6rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.4rem; }
-        .kds-action-btn { width: 100%; padding: 0.6rem; border: none; border-radius: 0.6rem; color: #ffffff; font-weight: 700; font-size: 0.875rem; cursor: pointer; opacity: 0.95; transition: opacity 0.15s, box-shadow 0.15s; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .kds-action-btn:hover:not(:disabled) { opacity: 1; box-shadow: 0 4px 8px rgba(0,0,0,0.15); }
-        .kds-action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .kds-order-no { font-family: 'Outfit', sans-serif; font-size: 1.5rem; font-weight: 800; color: #F1F5F9; letter-spacing: -0.02em; }
+        .kds-meta { display: flex; align-items: center; gap: 0.4rem; }
+        .kds-table { font-size: 0.68rem; background: #0F172A; border: 1px solid #334155; padding: 0.1rem 0.4rem; border-radius: 3px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+        .kds-elapsed { font-size: 0.72rem; color: #334155; font-weight: 600; }
+        .kds-elapsed.late-text { color: #F87171; font-weight: 700; }
+        .kds-items { display: flex; flex-direction: column; gap: 0.35rem; }
+        .kds-item { display: flex; align-items: baseline; gap: 0.4rem; font-size: 0.9rem; color: #CBD5E1; }
+        .kds-item-qty { font-weight: 800; color: #F59E0B; min-width: 1.5rem; font-family: 'Outfit', sans-serif; font-size: 1rem; }
+        .kds-item-name { font-weight: 600; color: #E2E8F0; }
+        .kds-item-note { font-size: 0.72rem; color: #D97706; padding-left: 1.9rem; font-weight: 500; }
+        .kds-order-note { font-size: 0.75rem; color: #475569; padding: 0.3rem 0.5rem; background: #0F172A; border: 1px solid #1E293B; border-radius: 3px; }
+        .kds-action-btn { width: 100%; padding: 0.55rem; border: none; border-radius: 4px; color: #ffffff; font-weight: 700; font-size: 0.82rem; cursor: pointer; transition: filter 0.12s; letter-spacing: 0.02em; }
+        .kds-action-btn:hover:not(:disabled) { filter: brightness(1.15); }
+        .kds-action-btn:disabled { opacity: 0.35; cursor: not-allowed; }
       `}</style>
     </div>
   )
