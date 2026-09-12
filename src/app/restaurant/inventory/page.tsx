@@ -36,6 +36,9 @@ export default async function InventoryPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <Link href="/restaurant/inventory/daily" className="btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700, borderColor: '#2563eb', color: '#2563eb' }}>
+            📊 Daily Stock Report
+          </Link>
           <Link href="/restaurant/inventory/audit" className="btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 600 }}>
             📋 Daily Stock Audit &amp; EOD
           </Link>

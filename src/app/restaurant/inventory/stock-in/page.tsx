@@ -115,12 +115,10 @@ export default async function StockInPage({
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-            <label style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0f172a' }}>Unit</label>
-            <input
+            <label style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0f172a' }}>Measurement Unit</label>
+            <select
               name="unit"
-              type="text"
               defaultValue="kg"
-              placeholder="e.g. kg, l, pcs"
               style={{
                 padding: '0.75rem 1rem',
                 background: '#ffffff',
@@ -129,7 +127,12 @@ export default async function StockInPage({
                 color: '#0f172a',
                 fontSize: '0.95rem',
               }}
-            />
+            >
+              <option value="kg">kg (Kilograms)</option>
+              <option value="gm">gm (Grams)</option>
+              <option value="liters">liters (Liters)</option>
+              <option value="quantity">quantity (Quantity / Units)</option>
+            </select>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>

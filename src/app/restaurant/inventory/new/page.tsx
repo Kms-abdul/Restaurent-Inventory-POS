@@ -68,12 +68,9 @@ export default async function NewInventoryItemPage() {
               }}
             >
               <option value="kg">kg (Kilograms)</option>
-              <option value="g">g (Grams)</option>
-              <option value="l">l (Liters)</option>
-              <option value="ml">ml (Milliliters)</option>
-              <option value="pcs">pcs (Pieces / Units)</option>
-              <option value="pack">pack (Packets)</option>
-              <option value="box">box (Boxes)</option>
+              <option value="gm">gm (Grams)</option>
+              <option value="liters">liters (Liters)</option>
+              <option value="quantity">quantity (Quantity / Units)</option>
             </select>
           </div>
 

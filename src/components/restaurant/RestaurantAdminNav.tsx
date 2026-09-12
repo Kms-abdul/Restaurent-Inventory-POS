@@ -12,16 +12,17 @@ const OPERATIONAL_ITEMS = [
 ]
 
 const MANAGEMENT_ITEMS = [
-  { href: '/restaurant/dashboard', label: 'Dashboard' },
-  { href: '/restaurant/branches', label: 'Branches' },
-  { href: '/restaurant/menu', label: 'Menu & Recipes' },
-  { href: '/restaurant/inventory', label: 'Inventory' },
-  { href: '/restaurant/inventory/audit', label: 'Stock Audit (EOD)' },
-  { href: '/restaurant/users', label: 'Users & Staff' },
-  { href: '/restaurant/roles', label: 'Roles' },
-  { href: '/restaurant/reports', label: 'Sales Reports' },
+  { href: '/restaurant/dashboard',          label: 'Dashboard' },
+  { href: '/restaurant/branches',           label: 'Branches' },
+  { href: '/restaurant/menu',               label: 'Menu & Recipes' },
+  { href: '/restaurant/inventory',          label: 'Inventory' },
+  { href: '/restaurant/inventory/daily',    label: 'Daily Stock Report' },
+  { href: '/restaurant/inventory/audit',    label: 'Stock Audit (EOD)' },
+  { href: '/restaurant/users',              label: 'Users & Staff' },
+  { href: '/restaurant/roles',              label: 'Roles' },
+  { href: '/restaurant/reports',            label: 'Sales Reports' },
   { href: '/restaurant/reports/collection', label: 'Collection Report' },
-  { href: '/restaurant/settings', label: 'Settings' },
+  { href: '/restaurant/settings',           label: 'Settings' },
 ]
 
 interface Props {
