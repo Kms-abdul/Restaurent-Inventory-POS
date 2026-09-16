@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient as createAdminClient } from '@supabase/supabase-js'
-import { getUserContext } from '@/utils/supabase/server'
+import { getActionContext } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
 
 function getAdminClient() {
@@ -23,7 +23,7 @@ export async function submitEODCountAction(data: {
     notes?: string
   }[]
 }) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx) throw new Error('Unauthorized')
 
   const admin = getAdminClient()

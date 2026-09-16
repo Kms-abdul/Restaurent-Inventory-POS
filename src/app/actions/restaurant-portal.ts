@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient as createAdminClient } from '@supabase/supabase-js'
-import { getUserContext, createClient } from '@/utils/supabase/server'
+import { getActionContext } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
@@ -17,7 +17,7 @@ function getAdminClient() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function createBranchAction(formData: FormData) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.restaurantId) throw new Error('Unauthorized')
 
   const name = (formData.get('name') as string)?.trim()
@@ -47,12 +47,11 @@ export async function createBranchAction(formData: FormData) {
   if (error) throw new Error(error.message)
 
   revalidatePath('/restaurant/branches')
-  revalidatePath('/restaurant/dashboard')
   redirect('/restaurant/branches')
 }
 
 export async function updateBranchAction(formData: FormData) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.restaurantId) throw new Error('Unauthorized')
 
   const branchId = formData.get('branch_id') as string
@@ -81,8 +80,6 @@ export async function updateBranchAction(formData: FormData) {
   if (error) throw new Error(error.message)
 
   revalidatePath('/restaurant/branches')
-  revalidatePath(`/restaurant/branches/${branchId}`)
-  revalidatePath('/restaurant/dashboard')
   redirect('/restaurant/branches')
 }
 
@@ -91,7 +88,7 @@ export async function updateBranchAction(formData: FormData) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function createMenuCategoryAction(formData: FormData) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.restaurantId) throw new Error('Unauthorized')
 
   const name = (formData.get('name') as string)?.trim()
@@ -116,7 +113,7 @@ export async function createMenuCategoryAction(formData: FormData) {
 }
 
 export async function updateMenuCategoryAction(formData: FormData) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.restaurantId) throw new Error('Unauthorized')
 
   const categoryId = formData.get('category_id') as string
@@ -147,7 +144,7 @@ export async function updateMenuCategoryAction(formData: FormData) {
 }
 
 export async function deleteMenuCategoryAction(categoryId: string) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.restaurantId) throw new Error('Unauthorized')
 
   const admin = getAdminClient()
@@ -163,7 +160,7 @@ export async function deleteMenuCategoryAction(categoryId: string) {
 }
 
 export async function createMenuItemAction(formData: FormData) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.restaurantId) throw new Error('Unauthorized')
 
   const name = (formData.get('name') as string)?.trim()
@@ -216,7 +213,7 @@ export async function createMenuItemAction(formData: FormData) {
 }
 
 export async function updateMenuItemAction(formData: FormData) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.restaurantId) throw new Error('Unauthorized')
 
   const itemId = formData.get('item_id') as string
@@ -266,12 +263,11 @@ export async function updateMenuItemAction(formData: FormData) {
   }
 
   revalidatePath('/restaurant/menu')
-  revalidatePath('/staff/pos')
   redirect('/restaurant/menu')
 }
 
 export async function deleteMenuItemAction(itemId: string) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.restaurantId) throw new Error('Unauthorized')
 
   const admin = getAdminClient()
@@ -284,7 +280,6 @@ export async function deleteMenuItemAction(itemId: string) {
   if (error) throw new Error(error.message)
 
   revalidatePath('/restaurant/menu')
-  revalidatePath('/staff/pos')
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -292,7 +287,7 @@ export async function deleteMenuItemAction(itemId: string) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function createRoleAction(formData: FormData) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.restaurantId) throw new Error('Unauthorized')
 
   const name = (formData.get('name') as string)?.trim()
@@ -332,7 +327,7 @@ export async function createRoleAction(formData: FormData) {
 }
 
 export async function updateRoleAction(formData: FormData) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.restaurantId) throw new Error('Unauthorized')
 
   const roleId = formData.get('role_id') as string
@@ -368,7 +363,7 @@ export async function updateRoleAction(formData: FormData) {
 }
 
 export async function deleteRoleAction(roleId: string) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.restaurantId) throw new Error('Unauthorized')
 
   const admin = getAdminClient()
@@ -389,7 +384,7 @@ export async function deleteRoleAction(roleId: string) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function inviteStaffAction(formData: FormData) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.restaurantId) throw new Error('Unauthorized')
 
   const email = (formData.get('email') as string)?.trim().toLowerCase()
@@ -446,7 +441,7 @@ export async function inviteStaffAction(formData: FormData) {
 }
 
 export async function updateStaffAction(formData: FormData) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.restaurantId) throw new Error('Unauthorized')
 
   const userId = formData.get('user_id') as string
@@ -488,7 +483,7 @@ export async function updateStaffAction(formData: FormData) {
 }
 
 export async function toggleStaffStatusAction(userId: string, currentStatus: boolean) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.restaurantId) throw new Error('Unauthorized')
 
   const admin = getAdminClient()
@@ -503,7 +498,7 @@ export async function toggleStaffStatusAction(userId: string, currentStatus: boo
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function updateRestaurantSettingsAction(formData: FormData) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.restaurantId) throw new Error('Unauthorized')
 
   const name = (formData.get('name') as string)?.trim()
@@ -530,7 +525,6 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
   if (error) throw new Error(error.message)
 
   revalidatePath('/restaurant/settings')
-  revalidatePath('/restaurant/dashboard')
   redirect('/restaurant/settings')
 }
 
@@ -539,7 +533,7 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function createInventoryItemAction(formData: FormData) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.restaurantId) throw new Error('Unauthorized')
 
   const name = (formData.get('name') as string)?.trim()
@@ -589,7 +583,7 @@ export async function createInventoryItemAction(formData: FormData) {
 }
 
 export async function updateInventoryItemAction(formData: FormData) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.restaurantId) throw new Error('Unauthorized')
 
   const itemId = formData.get('item_id') as string
@@ -620,7 +614,7 @@ export async function updateInventoryItemAction(formData: FormData) {
 }
 
 export async function deleteInventoryItemAction(itemId: string) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.restaurantId) throw new Error('Unauthorized')
 
   const admin = getAdminClient()
@@ -636,7 +630,7 @@ export async function deleteInventoryItemAction(itemId: string) {
 }
 
 export async function stockInAction(formData: FormData) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.restaurantId) throw new Error('Unauthorized')
 
   const itemId = formData.get('inventory_item_id') as string

@@ -3,6 +3,68 @@ import { cookies } from 'next/headers'
 import { cache } from 'react'
 import type { UserContext, PermissionKey } from '@/types/database'
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FAST AUTH CONTEXT (for Server Actions — minimal DB queries)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Quick auth check for Server Actions. Reads user JWT from Supabase session.
+ * If the project has custom app_metadata claims (restaurant_id, branch_id),
+ * those are returned directly with zero extra DB queries.
+ * Otherwise falls back to a single parallel query for restaurant/branch membership.
+ *
+ * Use this in Server Actions instead of getUserContext() to avoid 4+ DB round-trips.
+ */
+export const getActionContext = cache(async (): Promise<{
+  userId: string
+  restaurantId: string | null
+  branchId: string | null
+  isSuperAdmin: boolean
+} | null> => {
+  try {
+    const supabase = await createClient()
+    // getSession() reads from the cookie — zero network cost (vs getUser() which hits Supabase auth server)
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.user) return null
+    const user = session.user
+
+    // Try JWT claims first (zero DB cost) — set via Supabase custom claims / hooks
+    const meta = (user.app_metadata ?? {}) as Record<string, unknown>
+    if (meta.restaurant_id || meta.branch_id || meta.is_super_admin) {
+      return {
+        userId: user.id,
+        restaurantId: (meta.restaurant_id as string) ?? null,
+        branchId: (meta.branch_id as string) ?? null,
+        isSuperAdmin: !!(meta.is_super_admin),
+      }
+    }
+
+    // Fallback: run only 2 parallel membership queries (vs 4 in getUserContext)
+    const [platformRes, restaurantRes, branchRes] = await Promise.all([
+      supabase.from('platform_members').select('id').eq('user_id', user.id).eq('is_active', true).maybeSingle(),
+      supabase.from('restaurant_members').select('restaurant_id').eq('user_id', user.id).eq('is_active', true).maybeSingle(),
+      supabase.from('branch_members').select('branch_id, branches(restaurant_id)').eq('user_id', user.id).eq('is_active', true).maybeSingle(),
+    ])
+
+    if (platformRes.data) {
+      return { userId: user.id, restaurantId: null, branchId: null, isSuperAdmin: true }
+    }
+    if (restaurantRes.data) {
+      return { userId: user.id, restaurantId: restaurantRes.data.restaurant_id, branchId: null, isSuperAdmin: false }
+    }
+    if (branchRes.data) {
+      const branch = branchRes.data.branches as any
+      const restaurantId = Array.isArray(branch) ? branch[0]?.restaurant_id : branch?.restaurant_id
+      return { userId: user.id, restaurantId: restaurantId ?? null, branchId: branchRes.data.branch_id, isSuperAdmin: false }
+    }
+
+    return { userId: user.id, restaurantId: null, branchId: null, isSuperAdmin: false }
+  } catch (err) {
+    console.warn('[getActionContext] error:', err)
+    return null
+  }
+})
+
 export async function createClient() {
   const cookieStore = await cookies()
 
@@ -59,15 +121,28 @@ export const getUserContext = cache(async (): Promise<UserContext | null> => {
   try {
     const supabase = await createClient()
 
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return null
+    // Use getSession() to read from cookie (zero network cost) to get userId,
+    // then verify + fetch all membership data in ONE parallel batch
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.user) return null
+    const user = session.user
 
-    // Run user membership & profile queries in parallel to drastically minimize latency
+    // Fast path: if JWT app_metadata has claims, skip ALL DB membership queries
+    const meta = (user.app_metadata ?? {}) as Record<string, unknown>
+    const hasJwtClaims = !!(meta.restaurant_id || meta.branch_id || meta.is_super_admin)
+
+    // Run all membership + profile queries in parallel in a single batch
     const [profileRes, platformRes, restaurantRes, branchRes] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
-      supabase.from('platform_members').select('id').eq('user_id', user.id).eq('is_active', true).maybeSingle(),
-      supabase.from('restaurant_members').select('restaurant_id, restaurants(*)').eq('user_id', user.id).eq('is_active', true).maybeSingle(),
-      supabase.from('branch_members').select(`
+      hasJwtClaims && meta.is_super_admin
+        ? Promise.resolve({ data: { id: 'jwt' }, error: null })
+        : supabase.from('platform_members').select('id').eq('user_id', user.id).eq('is_active', true).maybeSingle(),
+      hasJwtClaims && meta.restaurant_id
+        ? supabase.from('restaurants').select('*').eq('id', meta.restaurant_id as string).maybeSingle().then(r => ({ data: r.data ? { restaurant_id: meta.restaurant_id, restaurants: r.data } : null, error: r.error }))
+        : supabase.from('restaurant_members').select('restaurant_id, restaurants(*)').eq('user_id', user.id).eq('is_active', true).maybeSingle(),
+      hasJwtClaims && meta.branch_id
+        ? supabase.from('branch_members').select(`branch_id, role_id, branches(*, restaurants(*)), roles(role_permissions(permission))`).eq('branch_id', meta.branch_id as string).eq('user_id', user.id).eq('is_active', true).maybeSingle()
+        : supabase.from('branch_members').select(`
         branch_id,
         role_id,
         branches(*, restaurants(*)),

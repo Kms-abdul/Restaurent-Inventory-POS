@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient as createAdminClient } from '@supabase/supabase-js'
-import { getUserContext } from '@/utils/supabase/server'
+import { getActionContext } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
@@ -20,7 +20,7 @@ export interface IngredientInput {
 }
 
 export async function saveRecipeAction(formData: FormData) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.restaurantId) throw new Error('Unauthorized')
 
   const menuItemId = formData.get('menu_item_id') as string
@@ -92,7 +92,7 @@ export async function saveRecipeAction(formData: FormData) {
 }
 
 export async function deleteRecipeAction(menuItemId: string) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.restaurantId) throw new Error('Unauthorized')
 
   const admin = getAdminClient()

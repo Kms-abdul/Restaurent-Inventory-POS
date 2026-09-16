@@ -1,10 +1,10 @@
 'use server'
 
-import { createServiceClient, getUserContext } from '@/utils/supabase/server'
+import { createServiceClient, getActionContext } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
 
 export async function createRestaurant(formData: FormData) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.isSuperAdmin) throw new Error('Unauthorized')
 
   const restaurantName = formData.get('restaurant_name') as string
@@ -49,7 +49,7 @@ export async function createRestaurant(formData: FormData) {
 }
 
 export async function listRestaurants() {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.isSuperAdmin) throw new Error('Unauthorized')
 
   const supabase = await createServiceClient()
@@ -63,7 +63,7 @@ export async function listRestaurants() {
 }
 
 export async function toggleRestaurantActive(restaurantId: string, isActive: boolean) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.isSuperAdmin) throw new Error('Unauthorized')
 
   const supabase = await createServiceClient()
@@ -74,5 +74,4 @@ export async function toggleRestaurantActive(restaurantId: string, isActive: boo
 
   if (error) throw new Error(error.message)
   revalidatePath('/super-admin/restaurants')
-  revalidatePath('/super-admin/dashboard')
 }

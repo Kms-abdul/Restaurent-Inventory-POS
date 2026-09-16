@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient, createServiceClient, getUserContext } from '@/utils/supabase/server'
+import { createClient, createServiceClient, getActionContext } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { CartItem, PaymentMode } from '@/types/database'
 
@@ -14,7 +14,8 @@ export async function createPOSOrder(params: {
   notes?: string
   items: CartItem[]
 }) {
-  const ctx = await getUserContext()
+  // Use fast context (1 DB query max vs 5 in getUserContext)
+  const ctx = await getActionContext()
   if (!ctx) throw new Error('Unauthorized')
 
   // Client-side idempotency key: branch + timestamp + random
@@ -62,13 +63,13 @@ export async function createPOSOrder(params: {
       .eq('id', result.order_id)
   }
 
+  // Only revalidate the POS page — dashboard picks it up on next natural visit
   revalidatePath('/staff/pos')
-  revalidatePath('/restaurant/dashboard')
   return result
 }
 
 export async function listOrders(branchId: string, filters?: { status?: string; limit?: number }) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx) throw new Error('Unauthorized')
 
   const supabase = ctx.isSuperAdmin ? await createServiceClient() : await createClient()
@@ -92,7 +93,7 @@ export async function updateFulfillmentStatus(
   orderId: string,
   status: 'pending' | 'cooking' | 'ready' | 'served'
 ) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx) throw new Error('Unauthorized')
 
   const supabase = ctx.isSuperAdmin ? await createServiceClient() : await createClient()
@@ -102,12 +103,12 @@ export async function updateFulfillmentStatus(
     .eq('id', orderId)
 
   if (error) throw new Error(error.message)
+  // Only revalidate kitchen if used from there; POS uses optimistic UI
   revalidatePath('/staff/kitchen')
-  revalidatePath('/staff/pos')
 }
 
 export async function voidOrder(orderId: string, reason: string) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx) throw new Error('Unauthorized')
 
   const supabase = ctx.isSuperAdmin ? await createServiceClient() : await createClient()

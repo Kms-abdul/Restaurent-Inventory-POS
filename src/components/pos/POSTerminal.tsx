@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useTransition, useEffect } from 'react'
+import { useState, useCallback, useTransition, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { CartItem } from '@/types/database'
@@ -26,6 +26,33 @@ interface Branch {
   name: string
 }
 
+interface POSOrderItem {
+  id?: string
+  menu_item_id?: string
+  item_name_at_sale?: string | null
+  item_name?: string | null
+  category_at_sale?: string | null
+  category?: string | null
+  unit_price_at_sale?: number | null
+  unit_price?: number | null
+  qty?: number | null
+  line_total?: number | null
+}
+
+interface RecentOrder {
+  id: string
+  order_no: number
+  created_at: string
+  total_amount?: number | null
+  discount_amount?: number | null
+  payment_mode?: string | null
+  notes?: string | null
+  status?: string | null
+  fulfillment?: string | null
+  order_items?: POSOrderItem[] | null
+  profiles?: { name?: string | null } | null
+}
+
 interface Props {
   branchId: string
   restaurantId: string
@@ -42,6 +69,20 @@ interface Props {
 }
 
 type PaymentMode = 'cash' | 'card' | 'upi'
+type ActiveTab = 'order' | 'menu' | 'kot' | 'kds' | 'reports' | 'staff' | 'printer'
+
+const POS_TABS: { id: ActiveTab; label: string; icon: string }[] = [
+  { id: 'order', label: 'Order', icon: '📋' },
+  { id: 'menu', label: 'Menu', icon: '🍴' },
+  { id: 'kot', label: 'KOT', icon: '🖨️' },
+  { id: 'kds', label: 'Kitchen KDS', icon: '👨‍🍳' },
+  { id: 'reports', label: 'Reports', icon: '📊' },
+  { id: 'staff', label: 'Staff', icon: '👥' },
+  { id: 'printer', label: 'Printer', icon: '⚙️' },
+]
+
+const DISCOUNT_PRESETS = [10, 20, 50]
+const DISCOUNT_REASONS = ['Relative / Owner', 'VIP Guest', 'Staff Meal', 'Promo']
 
 export default function POSTerminal({
   branchId,
@@ -60,7 +101,7 @@ export default function POSTerminal({
   const router = useRouter()
 
   // Navigation tabs state
-  const [activeTab, setActiveTab] = useState<'order' | 'menu' | 'kot' | 'kds' | 'reports' | 'staff' | 'printer'>('order')
+  const [activeTab, setActiveTab] = useState<ActiveTab>('order')
 
   // Order Screen state
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
@@ -83,9 +124,12 @@ export default function POSTerminal({
   } | null>(null)
 
   // Orders list for KDS, KOT, and Reports
-  const [recentOrders, setRecentOrders] = useState<any[]>([])
+  const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([])
   const [reportsDate, setReportsDate] = useState(new Date().toISOString().split('T')[0])
   const [autoPrintKOT, setAutoPrintKOT] = useState(true)
+
+  // Tracks which individual order action is in-flight (for per-button loading states)
+  const [pendingAction, setPendingAction] = useState<string | null>(null)
 
   // Discount & Special Order State
   const [discountType, setDiscountType] = useState<'percent' | 'fixed'>('percent')
@@ -94,25 +138,42 @@ export default function POSTerminal({
   const [showCustomDiscount, setShowCustomDiscount] = useState<boolean>(false)
   const [orderNotes, setOrderNotes] = useState<string>('')
 
+  const categoryById = useMemo(() => {
+    const map = new Map<string, Category>()
+    categories.forEach(category => map.set(category.id, category))
+    return map
+  }, [categories])
+
+  const categoryItemCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    menuItems.forEach(item => {
+      counts.set(item.category_id, (counts.get(item.category_id) ?? 0) + 1)
+    })
+    return counts
+  }, [menuItems])
+
+  const selectedCategoryName = selectedCategory
+    ? categoryById.get(selectedCategory)?.name ?? 'Category'
+    : 'Category'
+
   // Load recent orders on mount and after submission
   const loadOrders = useCallback(async () => {
     try {
-      const orders = await listOrders(branchId, { limit: 50 })
+      const orders = (await listOrders(branchId, { limit: 50 })) as RecentOrder[]
       setRecentOrders(orders || [])
       if (orders && orders.length > 0) {
         const highestNo = Math.max(...orders.map(o => o.order_no || 0))
         setNextOrderNo(highestNo + 1)
-        if (!lastOrder) {
-          const latest = orders[0]
-          setLastOrder({
+        const latest = orders[0]
+        setLastOrder(prev => prev ?? {
             order_no: latest.order_no,
             invoice: `INV-${new Date(latest.created_at).toISOString().slice(0, 10).replace(/-/g, '')}-${String(latest.order_no).padStart(4, '0')}`,
             subtotal: ((latest.total_amount || 0) + (latest.discount_amount || 0)) / 100,
             discount: (latest.discount_amount || 0) / 100,
             discount_reason: latest.notes || '',
             total: (latest.total_amount || 0) / 100,
-            items: (latest.order_items || []).map((oi: any) => ({
-              menuItemId: oi.menu_item_id,
+            items: (latest.order_items || []).map(oi => ({
+              menuItemId: oi.menu_item_id ?? '',
               name: oi.item_name_at_sale || oi.item_name || 'Item',
               category: oi.category_at_sale || oi.category || '',
               unitPrice: oi.unit_price_at_sale ?? oi.unit_price ?? 0,
@@ -123,15 +184,16 @@ export default function POSTerminal({
             payment_mode: latest.payment_mode || 'cash',
             notes: latest.notes || '',
           })
-        }
       }
     } catch (e) {
       console.error('Failed to load orders:', e)
     }
-  }, [branchId, lastOrder])
+  }, [branchId])
 
   useEffect(() => {
-    loadOrders()
+    queueMicrotask(() => {
+      void loadOrders()
+    })
   }, [loadOrders])
 
   // Branch Switcher Handler
@@ -151,7 +213,7 @@ export default function POSTerminal({
             : c
         )
       }
-      const cat = categories.find(c => c.id === item.category_id)
+      const cat = categoryById.get(item.category_id)
       return [
         ...prev,
         {
@@ -164,7 +226,7 @@ export default function POSTerminal({
         },
       ]
     })
-  }, [categories])
+  }, [categoryById])
 
   const updateQty = useCallback((menuItemId: string, delta: number) => {
     setCart(prev =>
@@ -195,18 +257,21 @@ export default function POSTerminal({
     setOrderNotes('')
   }
 
-  const subtotalPaise = cart.reduce((sum, item) => sum + item.lineTotal, 0)
+  const subtotalPaise = useMemo(
+    () => cart.reduce((sum, item) => sum + item.lineTotal, 0),
+    [cart]
+  )
   const subtotalRupees = subtotalPaise / 100
 
-  // Calculate discount in Paise
-  let discountPaise = 0
-  if (discountType === 'percent') {
-    const clampedPercent = Math.min(100, Math.max(0, discountValue))
-    discountPaise = Math.round(subtotalPaise * (clampedPercent / 100))
-  } else {
+  const discountPaise = useMemo(() => {
+    if (discountType === 'percent') {
+      const clampedPercent = Math.min(100, Math.max(0, discountValue))
+      return Math.round(subtotalPaise * (clampedPercent / 100))
+    }
+
     const fixedPaise = Math.round(Math.max(0, discountValue) * 100)
-    discountPaise = Math.min(subtotalPaise, fixedPaise)
-  }
+    return Math.min(subtotalPaise, fixedPaise)
+  }, [discountType, discountValue, subtotalPaise])
 
   const discountRupees = discountPaise / 100
   const finalTotalPaise = Math.max(0, subtotalPaise - discountPaise)
@@ -277,50 +342,62 @@ export default function POSTerminal({
           notes: combinedNotes,
         }
 
+        // Update UI immediately — don't block on loadOrders()
         setLastOrder(createdOrder)
         setNextOrderNo(result.order_no + 1)
         setCart([])
         clearDiscount()
         setOrderNotes('')
 
-        // Auto print or switch to KOT if configured
-        await loadOrders()
-      } catch (err: any) {
-        alert('Order failed: ' + (err.message || 'Unknown error'))
+        // Refresh order list in background — UI already updated above
+        void loadOrders()
+      } catch (err: unknown) {
+        alert('Order failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
       }
     })
   }
 
   // Filter items for display
-  const itemsInCurrentCategory = selectedCategory
-    ? menuItems.filter(i => i.category_id === selectedCategory)
-    : menuItems
+  const searchFilteredItems = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase()
+    if (normalizedQuery) {
+      return menuItems.filter(item => item.name.toLowerCase().includes(normalizedQuery))
+    }
 
-  const searchFilteredItems = searchQuery.trim()
-    ? menuItems.filter(i =>
-      i.name.toLowerCase().includes(searchQuery.toLowerCase())
-    )
-    : itemsInCurrentCategory
+    if (selectedCategory) {
+      return menuItems.filter(item => item.category_id === selectedCategory)
+    }
+
+    return menuItems
+  }, [menuItems, searchQuery, selectedCategory])
 
   // KDS Aggregated Chef Items (To Cook & To Pack)
   // Only include orders that are waiting to be cooked / packed (exclude ready/packed and served)
-  const activeKDSOrders = recentOrders.filter(
-    o => o.fulfillment !== 'ready' && o.fulfillment !== 'served' && o.status !== 'voided'
+  const activeKDSOrders = useMemo(
+    () => recentOrders.filter(
+      o => o.fulfillment !== 'ready' && o.fulfillment !== 'served' && o.status !== 'voided'
+    ),
+    [recentOrders]
   )
-  const chefAggregatedItems: { [name: string]: { qty: number; category: string } } = {}
-  activeKDSOrders.forEach(o => {
-    (o.order_items ?? []).forEach((oi: any) => {
-      const itemName = oi.item_name_at_sale || oi.item_name || 'Item'
-      const itemCat = oi.category_at_sale || oi.category || 'General'
-      if (!chefAggregatedItems[itemName]) {
-        chefAggregatedItems[itemName] = { qty: 0, category: itemCat }
-      }
-      chefAggregatedItems[itemName].qty += oi.qty || 1
+
+  const chefAggregatedEntries = useMemo(() => {
+    const aggregatedItems = new Map<string, { qty: number; category: string }>()
+    activeKDSOrders.forEach(o => {
+      (o.order_items ?? []).forEach(oi => {
+        const itemName = oi.item_name_at_sale || oi.item_name || 'Item'
+        const itemCat = oi.category_at_sale || oi.category || 'General'
+        const current = aggregatedItems.get(itemName) ?? { qty: 0, category: itemCat }
+        current.qty += oi.qty || 1
+        aggregatedItems.set(itemName, current)
+      })
     })
-  })
+    return Array.from(aggregatedItems.entries())
+  }, [activeKDSOrders])
 
   // Mark packed action: immediately drop from KDS screen and reduce item counts
   const handleMarkPacked = async (orderId: string) => {
+    if (pendingAction === orderId) return // prevent double-clicks
+    setPendingAction(orderId)
     // Optimistic UI update: instantly mark ready/packed so it removes from Packer view
     // and chef count dynamically drops
     setRecentOrders(prev =>
@@ -330,16 +407,32 @@ export default function POSTerminal({
       await updateFulfillmentStatus(orderId, 'ready')
     } catch (err) {
       console.error('Failed to update fulfillment status:', err)
+    } finally {
+      setPendingAction(null)
     }
-    await loadOrders()
+    // Refresh in background — optimistic update already handled the visible state
+    void loadOrders()
   }
 
   // Reports calculations
-  const totalReportsRev = recentOrders.reduce((acc, o) => acc + (o.status === 'settled' ? o.total_amount || 0 : 0), 0) / 100
-  const avgOrderRev = recentOrders.length > 0 ? totalReportsRev / recentOrders.length : 0
-  const cashTotal = recentOrders
-    .filter(o => o.payment_mode === 'cash' && o.status === 'settled')
-    .reduce((acc, o) => acc + (o.total_amount || 0), 0) / 100
+  const reportTotals = useMemo(() => {
+    let settledTotalPaise = 0
+    let cashTotalPaise = 0
+
+    recentOrders.forEach(o => {
+      if (o.status !== 'settled') return
+      const total = o.total_amount || 0
+      settledTotalPaise += total
+      if (o.payment_mode === 'cash') cashTotalPaise += total
+    })
+
+    const totalReportsRev = settledTotalPaise / 100
+    return {
+      totalReportsRev,
+      avgOrderRev: recentOrders.length > 0 ? totalReportsRev / recentOrders.length : 0,
+      cashTotal: cashTotalPaise / 100,
+    }
+  }, [recentOrders])
 
   return (
     <div className="pos-shell">
@@ -402,18 +495,10 @@ export default function POSTerminal({
 
         {/* ─── Yellow Nav Tabs (Screenshots 2, 3, 4, 5) ──────────────────── */}
         <div className="nav-tabs-bar">
-          {[
-            { id: 'order', label: 'Order', icon: '📋' },
-            { id: 'menu', label: 'Menu', icon: '🍴' },
-            { id: 'kot', label: 'KOT', icon: '🖨️' },
-            { id: 'kds', label: 'Kitchen KDS', icon: '👨‍🍳' },
-            { id: 'reports', label: 'Reports', icon: '📊' },
-            { id: 'staff', label: 'Staff', icon: '👥' },
-            { id: 'printer', label: 'Printer', icon: '⚙️' },
-          ].map(tab => (
+          {POS_TABS.map(tab => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
+              onClick={() => setActiveTab(tab.id)}
               className={`nav-tab-btn ${activeTab === tab.id ? 'active' : ''}`}
             >
               <span className="tab-icon">{tab.icon}</span>
@@ -440,7 +525,7 @@ export default function POSTerminal({
                       ←
                     </button>
                     <h2 className="panel-title">
-                      {categories.find(c => c.id === selectedCategory)?.name ?? 'Category'}
+                      {selectedCategoryName}
                     </h2>
                   </div>
                 ) : (
@@ -464,19 +549,16 @@ export default function POSTerminal({
               {/* View 1: Root Categories Grid (Screenshot 1) */}
               {!selectedCategory && !searchQuery.trim() ? (
                 <div className="categories-grid">
-                  {categories.map(cat => {
-                    const count = menuItems.filter(i => i.category_id === cat.id).length
-                    return (
-                      <div
-                        key={cat.id}
-                        onClick={() => setSelectedCategory(cat.id)}
-                        className="category-tile"
-                      >
-                        <div className="cat-name">{cat.name}</div>
-                        <div className="cat-count">{count} items</div>
-                      </div>
-                    )
-                  })}
+                  {categories.map(cat => (
+                    <div
+                      key={cat.id}
+                      onClick={() => setSelectedCategory(cat.id)}
+                      className="category-tile"
+                    >
+                      <div className="cat-name">{cat.name}</div>
+                      <div className="cat-count">{categoryItemCounts.get(cat.id) ?? 0} items</div>
+                    </div>
+                  ))}
                 </div>
               ) : (
                 /* View 2: Items Grid in Category or Search (Screenshot 5) */
@@ -485,7 +567,7 @@ export default function POSTerminal({
                     <div className="empty-items-msg">No items found for this branch.</div>
                   ) : (
                     searchFilteredItems.map(item => {
-                      const cat = categories.find(c => c.id === item.category_id)
+                      const cat = categoryById.get(item.category_id)
                       return (
                         <div key={item.id} className="item-tile">
                           <div className="item-tile-name">{item.name}</div>
@@ -570,6 +652,7 @@ export default function POSTerminal({
               </div>
 
               {/* Discount & Special Order Section */}
+              {canDiscount && (
               <div className="cart-discount-box">
                 <div className="discount-header-row">
                   <span className="discount-title">🏷️ Discount &amp; Special</span>
@@ -593,7 +676,7 @@ export default function POSTerminal({
                   </button>
 
                   {/* Standard percentage buttons */}
-                  {[10, 20, 50].map(pct => (
+                  {DISCOUNT_PRESETS.map(pct => (
                     <button
                       key={pct}
                       type="button"
@@ -659,7 +742,7 @@ export default function POSTerminal({
                     </div>
 
                     <div className="reason-chips-row">
-                      {['Relative / Owner', 'VIP Guest', 'Staff Meal', 'Promo'].map(chip => (
+                      {DISCOUNT_REASONS.map(chip => (
                         <button
                           key={chip}
                           type="button"
@@ -679,6 +762,7 @@ export default function POSTerminal({
                   </div>
                 )}
               </div>
+              )}
 
               {/* Total & Checkout */}
               <div className="cart-footer">
@@ -826,7 +910,7 @@ export default function POSTerminal({
                   ) : (
                     lastOrder.items.map((item, idx) => (
                       <div key={idx} className="kot-item-line">
-                        • {item.name || (item as any).item_name_at_sale || (item as any).item_name || 'Item'} × {item.qty}
+                        • {item.name || 'Item'} × {item.qty}
                       </div>
                     ))
                   )}
@@ -898,10 +982,10 @@ export default function POSTerminal({
                   🔥 Chef View: To Cook
                 </div>
                 <div className="kds-chef-list">
-                  {Object.entries(chefAggregatedItems).length === 0 ? (
+                  {chefAggregatedEntries.length === 0 ? (
                     <div className="kds-empty-msg">No pending orders to cook.</div>
                   ) : (
-                    Object.entries(chefAggregatedItems).map(([name, data]) => (
+                    chefAggregatedEntries.map(([name, data]) => (
                       <div key={name} className="chef-item-row">
                         <div>
                           <span className="chef-item-name">{name}</span>
@@ -932,7 +1016,7 @@ export default function POSTerminal({
                           </span>
                         </div>
                         <div className="packer-order-items">
-                          {(o.order_items ?? []).map((oi: any) => {
+                          {(o.order_items ?? []).map(oi => {
                             const itemName = oi.item_name_at_sale || oi.item_name || 'Item'
                             const itemCat = oi.category_at_sale || oi.category || ''
                             return (
@@ -946,9 +1030,10 @@ export default function POSTerminal({
                         <button
                           type="button"
                           onClick={() => handleMarkPacked(o.id)}
+                          disabled={pendingAction === o.id}
                           className="btn-mark-packed"
                         >
-                          ✓ Mark Packed
+                          {pendingAction === o.id ? '⏳ Packing...' : '✓ Mark Packed'}
                         </button>
                       </div>
                     ))
@@ -1004,19 +1089,19 @@ export default function POSTerminal({
 
               <div className="report-kpi-card card-green">
                 <div className="kpi-icon">💰</div>
-                <div className="kpi-num">₹{totalReportsRev.toFixed(2)}</div>
+                <div className="kpi-num">₹{reportTotals.totalReportsRev.toFixed(2)}</div>
                 <div className="kpi-title">Revenue</div>
               </div>
 
               <div className="report-kpi-card card-purple">
                 <div className="kpi-icon">📈</div>
-                <div className="kpi-num">₹{avgOrderRev.toFixed(2)}</div>
+                <div className="kpi-num">₹{reportTotals.avgOrderRev.toFixed(2)}</div>
                 <div className="kpi-title">Average order</div>
               </div>
 
               <div className="report-kpi-card card-orange">
                 <div className="kpi-icon">💳</div>
-                <div className="kpi-num">cash: ₹{cashTotal.toFixed(2)}</div>
+                <div className="kpi-num">cash: ₹{reportTotals.cashTotal.toFixed(2)}</div>
                 <div className="kpi-title">Payment Breakdown</div>
               </div>
             </div>
@@ -1057,16 +1142,16 @@ export default function POSTerminal({
                               {o.total_amount === 0 ? '🎁 Free' : o.payment_mode || 'cash'}
                             </td>
                             <td>{o.profiles?.name || cashierName}</td>
-                            <td>{(o.order_items ?? []).reduce((s: number, i: any) => s + (i.qty || 1), 0)}</td>
+                            <td>{(o.order_items ?? []).reduce((s, i) => s + (i.qty || 1), 0)}</td>
                             <td className="td-total">
                               {o.total_amount === 0 ? (
                                 <span style={{ color: '#16a34a', fontWeight: 800 }}>₹0.00 (Free)</span>
                               ) : (
                                 <span>₹{((o.total_amount || 0) / 100).toFixed(2)}</span>
                               )}
-                              {o.discount_amount > 0 && (
+                              {(o.discount_amount ?? 0) > 0 && (
                                 <div style={{ fontSize: '0.72rem', color: '#16a34a', fontWeight: 600 }}>
-                                  Disc: ₹{(o.discount_amount / 100).toFixed(2)}
+                                  Disc: ₹{((o.discount_amount ?? 0) / 100).toFixed(2)}
                                 </div>
                               )}
                             </td>
@@ -1083,8 +1168,17 @@ export default function POSTerminal({
                                   type="button"
                                   onClick={async () => {
                                     if (confirm(`Void order #${o.order_no}?`)) {
-                                      await voidOrder(o.id, 'Cashier request')
-                                      await loadOrders()
+                                      // Optimistic UI: mark voided immediately
+                                      setRecentOrders(prev =>
+                                        prev.map(ord => ord.id === o.id ? { ...ord, status: 'voided' } : ord)
+                                      )
+                                      try {
+                                        await voidOrder(o.id, 'Cashier request')
+                                      } catch (err) {
+                                        console.error('Void failed:', err)
+                                      }
+                                      // Refresh in background
+                                      void loadOrders()
                                     }
                                   }}
                                   className="action-btn-void"

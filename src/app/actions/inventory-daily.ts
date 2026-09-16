@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient as createAdminClient } from '@supabase/supabase-js'
-import { getUserContext } from '@/utils/supabase/server'
+import { getActionContext } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
 
 function getAdminClient() {
@@ -56,7 +56,7 @@ export async function getDailyInventoryLedger(
   branchId: string,
   dateStr: string // 'YYYY-MM-DD'
 ): Promise<DailyLedgerSummary> {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.restaurantId) throw new Error('Unauthorized')
 
   const admin = getAdminClient()
@@ -225,7 +225,7 @@ export async function submitDailyEODAuditAction(data: {
     notes?: string
   }[]
 }) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.restaurantId) throw new Error('Unauthorized')
 
   const admin = getAdminClient()

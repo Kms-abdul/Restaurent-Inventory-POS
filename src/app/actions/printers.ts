@@ -29,8 +29,7 @@ export async function addPrinter(formData: FormData) {
     throw new Error(error.message)
   }
 
-  revalidatePath('/super-admin/dashboard')
-  revalidatePath(`/super-admin/restaurants`)
+  revalidatePath('/super-admin/restaurants')
   return data
 }
 
@@ -47,6 +46,5 @@ export async function deletePrinter(formData: FormData) {
 
   if (error) throw new Error(error.message)
 
-  revalidatePath('/super-admin/dashboard')
-  revalidatePath(`/super-admin/restaurants`)
+  revalidatePath('/super-admin/restaurants')
 }

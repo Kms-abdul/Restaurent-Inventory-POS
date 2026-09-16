@@ -1,10 +1,10 @@
 'use server'
 
-import { createClient, getUserContext } from '@/utils/supabase/server'
+import { createClient, getActionContext } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
 
 export async function listInventoryItems(branchId: string) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx) throw new Error('Unauthorized')
 
   const supabase = await createClient()
@@ -19,7 +19,7 @@ export async function listInventoryItems(branchId: string) {
 }
 
 export async function createInventoryItem(formData: FormData) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx?.restaurantId) throw new Error('Unauthorized')
 
   const supabase = await createClient()
@@ -43,7 +43,7 @@ export async function recordStockIn(data: {
   supplier?: string
   notes?: string
 }) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx) throw new Error('Unauthorized')
 
   const supabase = await createClient()
@@ -60,11 +60,10 @@ export async function recordStockIn(data: {
 
   if (error) throw new Error(error.message)
   revalidatePath('/restaurant/inventory')
-  revalidatePath('/staff/pos')
 }
 
 export async function getTransactionHistory(inventoryItemId: string, branchId: string) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx) throw new Error('Unauthorized')
 
   const supabase = await createClient()
@@ -91,7 +90,7 @@ export async function submitEODCount(data: {
     notes?: string
   }[]
 }) {
-  const ctx = await getUserContext()
+  const ctx = await getActionContext()
   if (!ctx) throw new Error('Unauthorized')
 
   const supabase = await createClient()

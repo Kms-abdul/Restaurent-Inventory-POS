@@ -118,7 +118,8 @@ export default async function EditInventoryItemPage({ params }: { params: Promis
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', paddingTop: '1.25rem', borderTop: '1px solid #e2e8f0' }}>
           <button
-            type="button"
+            type="submit"
+            formNoValidate
             formAction={async () => {
               'use server'
               await deleteInventoryItemAction(item.id)
