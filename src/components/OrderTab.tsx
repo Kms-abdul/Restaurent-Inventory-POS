@@ -12,6 +12,8 @@ export default function OrderTab({ active }: { active: boolean }) {
   const [isManualNumber, setIsManualNumber] = useState(false);
   const [paymentMode, setPaymentMode] = useState("cash");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [flashedItem, setFlashedItem] = useState<string | null>(null);
+  const [removingItem, setRemovingItem] = useState<string | null>(null);
 
   const supabase = createClient();
 
@@ -47,6 +49,10 @@ export default function OrderTab({ active }: { active: boolean }) {
   }, [menu, searchQuery, activeCategory]);
 
   const addToCart = (item: any) => {
+    // Flash the pressed item for instant feedback
+    setFlashedItem(item.id);
+    setTimeout(() => setFlashedItem(null), 180);
+
     setCart(prev => {
       const existing = prev.find(c => c.id === item.id);
       if (existing) {
@@ -57,7 +63,11 @@ export default function OrderTab({ active }: { active: boolean }) {
   };
 
   const removeFromCart = (id: string) => {
-    setCart(prev => prev.filter(c => c.id !== id));
+    setRemovingItem(id);
+    setTimeout(() => {
+      setCart(prev => prev.filter(c => c.id !== id));
+      setRemovingItem(null);
+    }, 160);
   };
 
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
@@ -141,7 +151,12 @@ export default function OrderTab({ active }: { active: boolean }) {
           {(searchQuery || activeCategory) && (
             <div className="menu-grid">
               {displayedItems.map(item => (
-                <div key={item.id} className="menu-item" role="button" onClick={() => addToCart(item)}>
+                <div
+                  key={item.id}
+                  className={`menu-item ${flashedItem === item.id ? 'menu-item-flash' : ''}`}
+                  role="button"
+                  onClick={() => addToCart(item)}
+                >
                   <div className="menu-item-name">{item.name}</div>
                   <div className="menu-item-category">{item.category}</div>
                   <div className="menu-item-footer">
@@ -185,7 +200,11 @@ export default function OrderTab({ active }: { active: boolean }) {
           
           <div className="cart-items-list">
             {cart.map(item => (
-              <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem', borderRadius: '0.25rem' }}>
+              <div
+                key={item.id}
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem', borderRadius: '0.25rem', transition: 'all 0.15s' }}
+                className={removingItem === item.id ? 'cart-item-removing' : ''}
+              >
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600 }}>{item.name}</div>
                   <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>₹{(item.price / 100).toFixed(2)} × {item.qty}</div>

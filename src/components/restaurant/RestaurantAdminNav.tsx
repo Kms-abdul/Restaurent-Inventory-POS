@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
 import type { Profile, Restaurant } from '@/types/database'
 
 const OPERATIONAL_ITEMS = [
@@ -33,12 +34,27 @@ interface Props {
 export default function RestaurantAdminNav({ profile, restaurant }: Props) {
   const pathname = usePathname()
   const router = useRouter()
+  const [pendingHref, setPendingHref] = useState<string | null>(null)
+  const [loggingOut, setLoggingOut] = useState(false)
+
+  // Clear pending state when route resolves
+  useEffect(() => {
+    setPendingHref(null)
+  }, [pathname])
+
+  const handleNavClick = (href: string) => {
+    if (href === pathname) return
+    setPendingHref(href)
+  }
 
   const handleLogout = async () => {
+    if (loggingOut) return
+    setLoggingOut(true)
     const supabase = createClient()
     await supabase.auth.signOut()
     router.push('/login')
   }
+
 
   return (
     <nav className="ra-nav">
@@ -53,31 +69,39 @@ export default function RestaurantAdminNav({ profile, restaurant }: Props) {
       <div className="ra-nav-items">
         {/* Terminal Screens */}
         <div className="ra-nav-section-label">Terminal Screens</div>
-        {OPERATIONAL_ITEMS.map(item => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`ra-nav-item ra-nav-item-terminal ${pathname === item.href ? 'active' : ''}`}
-            id={`nav-${item.label.toLowerCase().replace(/[^a-z0-9]/g, '-')}`}
-          >
-            <span style={{ flex: 1 }}>{item.label}</span>
-          </Link>
-        ))}
+        {OPERATIONAL_ITEMS.map(item => {
+          const isPending = pendingHref === item.href
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={() => handleNavClick(item.href)}
+              className={`ra-nav-item ra-nav-item-terminal ${pathname === item.href ? 'active' : ''} ${isPending ? 'nav-item-pending' : ''}`}
+              id={`nav-${item.label.toLowerCase().replace(/[^a-z0-9]/g, '-')}`}
+            >
+              <span style={{ flex: 1 }}>{item.label}</span>
+            </Link>
+          )
+        })}
 
         <div style={{ height: '0.25rem' }} />
 
         {/* Management */}
         <div className="ra-nav-section-label">Management</div>
-        {MANAGEMENT_ITEMS.map(item => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`ra-nav-item ${pathname === item.href ? 'active' : ''}`}
-            id={`nav-${item.label.toLowerCase().replace(/[^a-z0-9]/g, '-')}`}
-          >
-            {item.label}
-          </Link>
-        ))}
+        {MANAGEMENT_ITEMS.map(item => {
+          const isPending = pendingHref === item.href
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={() => handleNavClick(item.href)}
+              className={`ra-nav-item ${pathname === item.href ? 'active' : ''} ${isPending ? 'nav-item-pending' : ''}`}
+              id={`nav-${item.label.toLowerCase().replace(/[^a-z0-9]/g, '-')}`}
+            >
+              {item.label}
+            </Link>
+          )
+        })}
       </div>
 
       <div className="ra-nav-footer">
@@ -88,7 +112,18 @@ export default function RestaurantAdminNav({ profile, restaurant }: Props) {
             <div className="ra-nav-profile-role">Restaurant Admin</div>
           </div>
         </div>
-        <button className="ra-nav-logout" onClick={handleLogout} id="logoutBtn">↩ Sign out</button>
+        <button
+          className={`ra-nav-logout ${loggingOut ? 'btn-loading' : ''}`}
+          onClick={handleLogout}
+          id="logoutBtn"
+          disabled={loggingOut}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+        >
+          {loggingOut
+            ? <><span className="btn-spinner btn-spinner-dark" />Signing out…</>
+            : '↩ Sign out'
+          }
+        </button>
       </div>
 
       <style jsx>{`

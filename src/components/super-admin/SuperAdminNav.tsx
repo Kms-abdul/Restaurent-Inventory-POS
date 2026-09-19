@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
 import type { Profile } from '@/types/database'
 
 const NAV_ITEMS = [
@@ -19,8 +20,22 @@ const NAV_ITEMS = [
 export default function SuperAdminNav({ profile }: { profile: Profile }) {
   const pathname = usePathname()
   const router = useRouter()
+  const [pendingHref, setPendingHref] = useState<string | null>(null)
+  const [loggingOut, setLoggingOut] = useState(false)
+
+  // Clear pending state when route resolves
+  useEffect(() => {
+    setPendingHref(null)
+  }, [pathname])
+
+  const handleNavClick = (href: string) => {
+    if (href === pathname) return
+    setPendingHref(href)
+  }
 
   const handleLogout = async () => {
+    if (loggingOut) return
+    setLoggingOut(true)
     const supabase = createClient()
     await supabase.auth.signOut()
     router.push('/login')
@@ -37,16 +52,21 @@ export default function SuperAdminNav({ profile }: { profile: Profile }) {
       </div>
 
       <div className="sa-nav-items">
-        {NAV_ITEMS.map(item => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`sa-nav-item ${pathname.startsWith(item.href) ? 'active' : ''}`}
-            id={`nav-${item.label.toLowerCase()}`}
-          >
-            {item.label}
-          </Link>
-        ))}
+        {NAV_ITEMS.map(item => {
+          const isPending = pendingHref === item.href
+          const isActive  = pathname.startsWith(item.href)
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={() => handleNavClick(item.href)}
+              className={`sa-nav-item ${isActive ? 'active' : ''} ${isPending ? 'nav-item-pending' : ''}`}
+              id={`nav-${item.label.toLowerCase()}`}
+            >
+              {item.label}
+            </Link>
+          )
+        })}
       </div>
 
       <div className="sa-nav-footer">
@@ -57,10 +77,20 @@ export default function SuperAdminNav({ profile }: { profile: Profile }) {
             <div className="sa-nav-profile-role">Super Admin</div>
           </div>
         </div>
-        <button className="sa-nav-logout" onClick={handleLogout} id="logoutBtn">
-          ↩ Sign out
+        <button
+          className={`sa-nav-logout ${loggingOut ? 'btn-loading' : ''}`}
+          onClick={handleLogout}
+          id="logoutBtn"
+          disabled={loggingOut}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+        >
+          {loggingOut
+            ? <><span className="btn-spinner btn-spinner-dark" />Signing out…</>
+            : '↩ Sign out'
+          }
         </button>
       </div>
+
 
       <style jsx>{`
         .sa-nav {

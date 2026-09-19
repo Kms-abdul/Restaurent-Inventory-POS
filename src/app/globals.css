@@ -1010,3 +1010,156 @@ body {
   box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
+
+/* ─── Global UX Feedback System ────────────────────────────────────────────── */
+
+/* Page Loading Bar */
+.page-loader-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2.5px;
+  z-index: 9999;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.page-loader-bar-inner {
+  height: 100%;
+  background: linear-gradient(90deg, #D97706, #F59E0B, #D97706);
+  background-size: 200% 100%;
+  animation: loader-slide 1.2s ease-in-out infinite, loader-shimmer 1.5s linear infinite;
+  border-radius: 0 2px 2px 0;
+  box-shadow: 0 0 8px rgba(217, 119, 6, 0.6);
+}
+
+@keyframes loader-slide {
+  0%   { width: 0%; opacity: 1; }
+  60%  { width: 85%; opacity: 1; }
+  100% { width: 100%; opacity: 0; }
+}
+
+@keyframes loader-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Nav Loading State */
+.nav-item-pending {
+  position: relative;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.nav-item-pending::after {
+  content: '';
+  position: absolute;
+  right: 0.6rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+  opacity: 0.7;
+}
+
+/* Button Loading State */
+.btn-loading {
+  position: relative;
+  pointer-events: none;
+  opacity: 0.8;
+}
+
+.btn-spinner {
+  display: inline-block;
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+  flex-shrink: 0;
+}
+
+.btn-spinner-dark {
+  border-color: rgba(15, 23, 42, 0.25);
+  border-top-color: #0f172a;
+}
+
+/* Press scale on all interactive elements */
+.btn-primary:active,
+.btn-ghost:active,
+.btn-ghost-sm:active {
+  transform: scale(0.97) translateY(0) !important;
+  transition: transform 0.08s !important;
+}
+
+/* POS Menu Item Press Feedback */
+.menu-item {
+  transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.15s ease !important;
+}
+
+.menu-item:active {
+  transform: scale(0.95) !important;
+}
+
+.menu-item-flash {
+  background: #dcfce7 !important;
+  border-color: #16a34a !important;
+  transform: scale(0.97) !important;
+}
+
+.category-item {
+  transition: transform 0.1s ease, background 0.12s ease !important;
+}
+
+.category-item:active {
+  transform: scale(0.96) !important;
+}
+
+/* Cart item remove flash */
+.cart-item-removing {
+  background: rgba(220, 38, 38, 0.15) !important;
+  transform: scale(0.97) !important;
+  transition: all 0.15s !important;
+  opacity: 0 !important;
+}
+
+/* Nav tab press feedback (POS top nav) */
+.nav-tab {
+  transition: background 0.1s, color 0.1s, transform 0.08s !important;
+}
+
+.nav-tab:active {
+  transform: scale(0.96) !important;
+}
+
+/* Logout button loading */
+.ra-nav-logout:active,
+.sa-nav-logout:active {
+  transform: scale(0.97);
+}
+
+/* Page content fade-in on navigation */
+@keyframes page-fadein {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.page-fadein {
+  animation: page-fadein 0.18s ease-out both;
+}
+
+/* Disabled button feedback */
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+button:disabled:active {
+  transform: none !important;
+}

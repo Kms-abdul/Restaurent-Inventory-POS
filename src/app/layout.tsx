@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import PageLoader from '@/components/ui/PageLoader'
 
 // Force all routes to be dynamically rendered at request time.
 // Required because every page uses cookies() for Supabase auth.
@@ -21,7 +22,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <PageLoader />
+        {children}
+      </body>
     </html>
   )
 }
+
