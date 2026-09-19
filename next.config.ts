@@ -3,7 +3,7 @@ import os from "os";
 import dns from "dns";
 
 // Bypass ISP DNS hijacking for Supabase (e.g. ACT Fibernet India) in Node.js
-const SUPABASE_HOST = 'vldwcfdisdufqgehuhzp.supabase.co';
+const SUPABASE_HOST = 'jsefqawauiidxrzsvdub.supabase.co';
 const CLOUDFLARE_IP = '104.18.38.10';
 
 const origLookup: any = dns.lookup;

@@ -1,6 +1,10 @@
 import type { Metadata } from 'next'
 import './globals.css'
 
+// Force all routes to be dynamically rendered at request time.
+// Required because every page uses cookies() for Supabase auth.
+export const dynamic = 'force-dynamic'
+
 export const metadata: Metadata = {
   title: 'Restaurant POS Platform',
   description: 'Multi-tenant restaurant management and point-of-sale platform',
