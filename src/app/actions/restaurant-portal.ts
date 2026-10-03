@@ -112,6 +112,89 @@ export async function createMenuCategoryAction(formData: FormData) {
   redirect('/restaurant/menu')
 }
 
+export async function bulkCreateMenuCategoriesAction(formData: FormData) {
+  const ctx = await getActionContext()
+  if (!ctx?.restaurantId) throw new Error('Unauthorized')
+
+  const count = Number(formData.get('count') ?? 0)
+  if (count === 0) throw new Error('No categories to create')
+
+  const rows = []
+  for (let i = 0; i < count; i++) {
+    const name = (formData.get(`categories[${i}][name]`) as string)?.trim()
+    const description = (formData.get(`categories[${i}][description]`) as string)?.trim() || null
+    const sortOrder = Number(formData.get(`categories[${i}][sort_order]`) ?? i + 1)
+    if (!name) continue
+    rows.push({
+      restaurant_id: ctx.restaurantId,
+      name,
+      description,
+      sort_order: isNaN(sortOrder) ? i + 1 : sortOrder,
+      is_active: true,
+    })
+  }
+
+  if (rows.length === 0) throw new Error('No valid categories to create')
+
+  const admin = getAdminClient()
+  const { error } = await admin.from('menu_categories').insert(rows)
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/restaurant/menu')
+}
+
+export async function bulkCreateMenuItemsAction(formData: FormData) {
+  const ctx = await getActionContext()
+  if (!ctx?.restaurantId) throw new Error('Unauthorized')
+
+  const count = Number(formData.get('count') ?? 0)
+  if (count === 0) throw new Error('No items to create')
+
+  const rows = []
+  for (let i = 0; i < count; i++) {
+    const name = (formData.get(`items[${i}][name]`) as string)?.trim()
+    const categoryId = formData.get(`items[${i}][category_id]`) as string
+    const priceRupees = Number(formData.get(`items[${i}][price]`) ?? 0)
+    const description = (formData.get(`items[${i}][description]`) as string)?.trim() || null
+    if (!name || !categoryId || isNaN(priceRupees)) continue
+    rows.push({
+      restaurant_id: ctx.restaurantId,
+      category_id: categoryId,
+      name,
+      description,
+      price: Math.round(priceRupees * 100),
+      is_available: true,
+      is_active: true,
+    })
+  }
+
+  if (rows.length === 0) throw new Error('No valid items to create')
+
+  const admin = getAdminClient()
+  const { data: items, error } = await admin.from('menu_items').insert(rows).select('id')
+  if (error) throw new Error(error.message)
+
+  // Assign all items to all branches by default
+  const { data: allBranches } = await admin
+    .from('branches')
+    .select('id')
+    .eq('restaurant_id', ctx.restaurantId)
+
+  if (allBranches && allBranches.length > 0 && items && items.length > 0) {
+    const branchRows = allBranches.flatMap(b =>
+      items.map(item => ({
+        branch_id: b.id,
+        menu_item_id: item.id,
+        is_available: true,
+      }))
+    )
+    await admin.from('branch_menu_items').upsert(branchRows, { onConflict: 'branch_id,menu_item_id' })
+  }
+
+  revalidatePath('/restaurant/menu')
+  revalidatePath('/staff/pos')
+}
+
 export async function updateMenuCategoryAction(formData: FormData) {
   const ctx = await getActionContext()
   if (!ctx?.restaurantId) throw new Error('Unauthorized')

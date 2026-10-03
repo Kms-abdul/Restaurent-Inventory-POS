@@ -33,9 +33,11 @@ export default async function MenuPage() {
             {cats.length} categories · {totalItems} items · Link recipes to auto-deduct inventory
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
           <Link href="/restaurant/menu/categories/new" className="btn-ghost">+ Category</Link>
+          <Link href="/restaurant/menu/categories/bulk" className="btn-ghost" style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8' }}>⚡ Bulk Categories</Link>
           <Link href="/restaurant/menu/items/new" className="btn-primary">+ Item</Link>
+          <Link href="/restaurant/menu/items/bulk" className="btn-primary" style={{ background: 'linear-gradient(135deg,#7c3aed,#2563eb)' }}>⚡ Bulk Items</Link>
         </div>
       </div>
 
@@ -58,6 +60,7 @@ export default async function MenuPage() {
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <Link href={`/restaurant/menu/categories/${cat.id}/edit`} className="btn-ghost-sm">Edit Category</Link>
                 <Link href={`/restaurant/menu/items/new?category=${cat.id}`} className="btn-ghost-sm">+ Item</Link>
+                <Link href={`/restaurant/menu/items/bulk?category=${cat.id}`} className="btn-ghost-sm" style={{ color: '#7c3aed', borderColor: '#ddd6fe', background: '#faf5ff' }}>⚡ Bulk Items</Link>
               </div>
             </div>
 

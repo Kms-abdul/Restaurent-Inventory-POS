@@ -4,7 +4,7 @@ import { getUserContext, createClient } from '@/utils/supabase/server'
 import StockAuditForm from '@/components/inventory/StockAuditForm'
 import { getDailyInventoryLedger } from '@/app/actions/inventory-daily'
 
-export const metadata = { title: 'Daily Stock Audit & Variance Ledger' }
+export const metadata = { title: 'Daily Stock Audit' }
 
 export default async function StockAuditPage({
   searchParams,
@@ -66,141 +66,106 @@ export default async function StockAuditPage({
       {/* Header */}
       <div className="ra-page-header">
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
-            <Link href="/restaurant/inventory" style={{ color: '#2563eb', fontSize: '0.875rem', fontWeight: 600, textDecoration: 'none' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.35rem' }}>
+            <Link href="/restaurant/inventory" className="btn-ghost-sm">
               ← Back to Inventory
             </Link>
+            <Link href={`/restaurant/inventory/daily?branch=${activeBranch.id}&date=${selectedDate}`} className="btn-ghost-sm">
+              View Daily Stock Report →
+            </Link>
           </div>
-          <h1 style={{ color: '#0f172a' }}>Day-wise Stock Audit &amp; Daily Ledger</h1>
-          <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
-            Daily opening &amp; closing stock reconciliation. Today&apos;s physical closing count automatically sets tomorrow&apos;s opening stock.
+          <h1>EOD Stock Audit &amp; Daily Ledger</h1>
+          <p style={{ color: '#64748b', fontSize: '0.875rem', marginTop: '0.2rem' }}>
+            Closing count reconciliation for <strong>{activeBranch.name}</strong> on <strong>{selectedDate}</strong>
           </p>
         </div>
 
         {/* Date & Branch Controls */}
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          {/* Branch Selector */}
+        <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Branch Switcher */}
           {branchList.length > 1 && (
-            <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: '0.3rem' }}>Branch</label>
-              <div style={{ display: 'flex', gap: '0.35rem' }}>
-                {branchList.map(b => (
-                  <Link
-                    key={b.id}
-                    href={`/restaurant/inventory/audit?branch=${b.id}&date=${selectedDate}`}
-                    style={{
-                      padding: '0.4rem 0.8rem',
-                      borderRadius: '0.4rem',
-                      fontSize: '0.825rem',
-                      fontWeight: 600,
-                      textDecoration: 'none',
-                      color: activeBranch.id === b.id ? '#ffffff' : '#334155',
-                      background: activeBranch.id === b.id ? '#2563eb' : '#ffffff',
-                      border: activeBranch.id === b.id ? '1px solid #2563eb' : '1px solid #cbd5e1',
-                    }}
-                  >
-                    {b.name}
-                  </Link>
-                ))}
-              </div>
+            <div className="clean-seg-control">
+              {branchList.map(b => (
+                <Link
+                  key={b.id}
+                  href={`/restaurant/inventory/audit?branch=${b.id}&date=${selectedDate}`}
+                  className={`clean-seg-item ${activeBranch.id === b.id ? 'active' : ''}`}
+                >
+                  {b.name}
+                </Link>
+              ))}
             </div>
           )}
 
-          {/* Business Date Picker */}
-          <div>
-            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: '0.3rem' }}>Business Date</label>
-            <form method="GET" style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', margin: 0 }}>
-              <input type="hidden" name="branch" value={activeBranch.id} />
-              <input
-                type="date"
-                name="date"
-                defaultValue={selectedDate}
-                style={{
-                  padding: '0.38rem 0.75rem',
-                  borderRadius: '0.4rem',
-                  border: '1px solid #cbd5e1',
-                  background: '#ffffff',
-                  color: '#0f172a',
-                  fontSize: '0.875rem',
-                  fontWeight: 600,
-                }}
-              />
-              <button
-                type="submit"
-                className="btn-secondary"
-                style={{ padding: '0.4rem 0.8rem', fontSize: '0.825rem' }}
-              >
-                Go
-              </button>
-
-              {/* Quick Date Pills */}
-              <Link
-                href={`/restaurant/inventory/audit?branch=${activeBranch.id}&date=${todayStr}`}
-                style={{
-                  padding: '0.4rem 0.65rem',
-                  borderRadius: '0.4rem',
-                  fontSize: '0.8rem',
-                  fontWeight: 600,
-                  textDecoration: 'none',
-                  background: selectedDate === todayStr ? '#eff6ff' : '#f8fafc',
-                  border: selectedDate === todayStr ? '1px solid #3b82f6' : '1px solid #cbd5e1',
-                  color: selectedDate === todayStr ? '#1d4ed8' : '#64748b',
-                }}
-              >
-                Today
-              </Link>
-              <Link
-                href={`/restaurant/inventory/audit?branch=${activeBranch.id}&date=${yesterdayStr}`}
-                style={{
-                  padding: '0.4rem 0.65rem',
-                  borderRadius: '0.4rem',
-                  fontSize: '0.8rem',
-                  fontWeight: 600,
-                  textDecoration: 'none',
-                  background: selectedDate === yesterdayStr ? '#eff6ff' : '#f8fafc',
-                  border: selectedDate === yesterdayStr ? '1px solid #3b82f6' : '1px solid #cbd5e1',
-                  color: selectedDate === yesterdayStr ? '#1d4ed8' : '#64748b',
-                }}
-              >
-                Yesterday
-              </Link>
-            </form>
+          {/* Quick Date Switcher */}
+          <div className="clean-seg-control">
+            <Link
+              href={`/restaurant/inventory/audit?branch=${activeBranch.id}&date=${todayStr}`}
+              className={`clean-seg-item ${selectedDate === todayStr ? 'active' : ''}`}
+            >
+              Today
+            </Link>
+            <Link
+              href={`/restaurant/inventory/audit?branch=${activeBranch.id}&date=${yesterdayStr}`}
+              className={`clean-seg-item ${selectedDate === yesterdayStr ? 'active' : ''}`}
+            >
+              Yesterday
+            </Link>
           </div>
+
+          {/* Business Date Picker */}
+          <form method="GET" style={{ display: 'inline-flex', gap: '0.35rem', margin: 0, alignItems: 'center' }}>
+            <input type="hidden" name="branch" value={activeBranch.id} />
+            <input
+              type="date"
+              name="date"
+              defaultValue={selectedDate}
+              style={{
+                padding: '0.35rem 0.6rem',
+                borderRadius: '6px',
+                border: '1px solid #cbd5e1',
+                fontSize: '0.825rem',
+                color: '#0f172a',
+                background: '#ffffff',
+              }}
+            />
+            <button
+              type="submit"
+              className="btn-secondary"
+              style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}
+            >
+              Go
+            </button>
+          </form>
         </div>
       </div>
 
-      {/* KPI Cards for Selected Date */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '0.75rem', padding: '1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
-          <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b', marginBottom: '0.35rem' }}>📦 Items Tracked</div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f172a' }}>{ledger.total_items}</div>
-          <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.2rem' }}>Active raw ingredients</div>
+      {/* KPI Cards */}
+      <div className="clean-stat-grid">
+        <div className="clean-stat-card">
+          <span className="clean-stat-label">Items Tracked</span>
+          <span className="clean-stat-val">{ledger.total_items}</span>
+          <span className="clean-stat-sub">Active inventory items</span>
         </div>
 
-        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '0.75rem', padding: '1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
-          <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b', marginBottom: '0.35rem' }}>📥 Stock In (Added Today)</div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: ledger.total_stock_in > 0 ? '#16a34a' : '#0f172a' }}>
-            +{ledger.total_stock_in}
-          </div>
-          <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.2rem' }}>Purchases &amp; inward transfers</div>
+        <div className="clean-stat-card">
+          <span className="clean-stat-label">Stock Added (+)</span>
+          <span className="clean-stat-val">{ledger.total_stock_in.toFixed(2)}</span>
+          <span className="clean-stat-sub">Inward deliveries today</span>
         </div>
 
-        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '0.75rem', padding: '1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
-          <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b', marginBottom: '0.35rem' }}>🍳 Consumed (POS Sales)</div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: ledger.total_consumed > 0 ? '#d97706' : '#0f172a' }}>
-            -{ledger.total_consumed}
-          </div>
-          <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.2rem' }}>Recipe recipe deductions</div>
+        <div className="clean-stat-card">
+          <span className="clean-stat-label">Consumed (-)</span>
+          <span className="clean-stat-val">{ledger.total_consumed.toFixed(2)}</span>
+          <span className="clean-stat-sub">POS sales &amp; deductions</span>
         </div>
 
-        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '0.75rem', padding: '1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
-          <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b', marginBottom: '0.35rem' }}>⚖️ Discrepancies / Variance</div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: ledger.discrepancies_count > 0 ? '#dc2626' : '#16a34a' }}>
-            {ledger.discrepancies_count}
-          </div>
-          <div style={{ fontSize: '0.75rem', color: ledger.discrepancies_count > 0 ? '#dc2626' : '#16a34a', marginTop: '0.2rem', fontWeight: 600 }}>
-            {ledger.discrepancies_count > 0 ? '⚠️ Variances require review' : '✓ All items matched'}
-          </div>
+        <div className="clean-stat-card">
+          <span className="clean-stat-label">Variances</span>
+          <span className="clean-stat-val">{ledger.discrepancies_count}</span>
+          <span className="clean-stat-sub">
+            {ledger.discrepancies_count > 0 ? 'Items require review' : 'All counts matched'}
+          </span>
         </div>
       </div>
 
@@ -216,10 +181,10 @@ export default async function StockAuditPage({
 
       {/* Past Audits History */}
       {(recentCounts ?? []).length > 0 && (
-        <div className="ra-section" style={{ marginTop: '2.5rem', padding: 0, background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '1rem', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-          <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e2e8f0' }}>
-            <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a' }}>Past Daily EOD Audits &amp; Variance History</h2>
-            <p style={{ fontSize: '0.8rem', color: '#64748b' }}>Recent physical count reconciliation records for {activeBranch.name}</p>
+        <div style={{ marginTop: '2rem' }}>
+          <div style={{ marginBottom: '0.75rem' }}>
+            <h2 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#0f172a' }}>Past EOD Audits &amp; History</h2>
+            <p style={{ fontSize: '0.8rem', color: '#64748b' }}>Recent physical reconciliation logs for {activeBranch.name}</p>
           </div>
 
           <div className="sa-table-wrap">
@@ -227,8 +192,8 @@ export default async function StockAuditPage({
               <thead>
                 <tr>
                   <th>Audit Date</th>
-                  <th>Audit Status</th>
-                  <th>Discrepancy Summary</th>
+                  <th>Status</th>
+                  <th>Summary</th>
                   <th>Variances Logged</th>
                   <th>Remarks</th>
                 </tr>
@@ -239,50 +204,41 @@ export default async function StockAuditPage({
                   const itemsWithVariance = (sc.stock_count_items ?? []).filter((item: any) => Math.abs(Number(item.variance_qty)) > 0.001)
                   return (
                     <tr key={sc.id}>
-                      <td style={{ fontWeight: 600, color: '#0f172a' }}>
+                      <td>
                         <Link
                           href={`/restaurant/inventory/audit?branch=${activeBranch.id}&date=${auditDateStr}`}
-                          style={{ color: '#2563eb', textDecoration: 'none', fontWeight: 700 }}
+                          style={{ color: '#0f172a', textDecoration: 'none', fontWeight: 600 }}
                         >
-                          📅 {new Date(sc.counted_at).toLocaleDateString('en-IN', { dateStyle: 'medium' })}
+                          {new Date(sc.counted_at).toLocaleDateString('en-IN', { dateStyle: 'medium' })}
                         </Link>
                         <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
                           {new Date(sc.counted_at).toLocaleTimeString('en-IN', { timeStyle: 'short' })}
                         </div>
                       </td>
                       <td>
-                        <span
-                          style={{
-                            background: sc.status === 'confirmed' ? '#dcfce7' : '#fef3c7',
-                            color: sc.status === 'confirmed' ? '#166534' : '#92400e',
-                            padding: '0.2rem 0.5rem',
-                            borderRadius: '0.35rem',
-                            fontSize: '0.75rem',
-                            fontWeight: 700,
-                          }}
-                        >
-                          {sc.status === 'confirmed' ? '✓ Confirmed' : 'Draft'}
+                        <span className={`badge ${sc.status === 'confirmed' ? 'badge-neutral' : 'badge-amber'}`}>
+                          {sc.status === 'confirmed' ? 'Confirmed' : 'Draft'}
                         </span>
                       </td>
                       <td>
                         {itemsWithVariance.length === 0 ? (
-                          <span style={{ color: '#16a34a', fontWeight: 600 }}>✓ Zero Discrepancies</span>
+                          <span style={{ color: '#16a34a', fontSize: '0.825rem', fontWeight: 600 }}>Zero Discrepancies</span>
                         ) : (
-                          <span style={{ color: '#d97706', fontWeight: 700 }}>
-                            ⚠️ {itemsWithVariance.length} item{itemsWithVariance.length !== 1 ? 's' : ''} variance
+                          <span style={{ color: '#b45309', fontSize: '0.825rem', fontWeight: 600 }}>
+                            {itemsWithVariance.length} variance{itemsWithVariance.length !== 1 ? 's' : ''}
                           </span>
                         )}
                       </td>
                       <td>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.8rem' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', fontSize: '0.8rem' }}>
                           {itemsWithVariance.map((vi: any) => (
-                            <span key={vi.id} style={{ color: '#334155' }}>
-                              • {vi.inventory_items?.name}: <strong style={{ color: Number(vi.variance_qty) < 0 ? '#dc2626' : '#2563eb' }}>{Number(vi.variance_qty) > 0 ? `+${vi.variance_qty}` : vi.variance_qty} {vi.inventory_items?.unit}</strong> ({vi.adjustment_reason})
+                            <span key={vi.id} style={{ color: '#475569' }}>
+                              {vi.inventory_items?.name}: <strong style={{ color: '#0f172a' }}>{Number(vi.variance_qty) > 0 ? `+${vi.variance_qty}` : vi.variance_qty} {vi.inventory_items?.unit}</strong> ({vi.adjustment_reason})
                             </span>
                           ))}
                         </div>
                       </td>
-                      <td style={{ color: '#64748b', fontSize: '0.85rem' }}>
+                      <td style={{ color: '#64748b', fontSize: '0.825rem' }}>
                         {sc.notes || '—'}
                       </td>
                     </tr>

@@ -36,33 +36,46 @@ export default async function StockInPage({
   const branchList = branches ?? []
 
   return (
-    <div className="ra-page" style={{ maxWidth: '650px' }}>
+    <div className="ra-page" style={{ maxWidth: '640px' }}>
       <div className="ra-page-header">
         <div>
-          <Link href="/restaurant/inventory" style={{ color: '#2563eb', fontSize: '0.875rem', fontWeight: 600, textDecoration: 'none' }}>
-            ← Back to Inventory
-          </Link>
-          <h1 style={{ marginTop: '0.5rem', color: '#0f172a' }}>Stock In / Purchase</h1>
-          <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
-            Record inventory replenishments and deliveries from suppliers
+          <div style={{ marginBottom: '0.35rem' }}>
+            <Link href="/restaurant/inventory" className="btn-ghost-sm">
+              ← Back to Inventory
+            </Link>
+          </div>
+          <h1>Record Stock In</h1>
+          <p style={{ color: '#64748b', fontSize: '0.875rem', marginTop: '0.2rem' }}>
+            Log incoming supplier deliveries and inventory additions
           </p>
         </div>
       </div>
 
-      <form action={stockInAction} className="ra-section" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '1rem', padding: '1.75rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          <label style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0f172a' }}>Item *</label>
+      <form
+        action={stockInAction}
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '1.25rem',
+          background: '#ffffff',
+          border: '1px solid #e2e8f0',
+          borderRadius: '8px',
+          padding: '1.5rem',
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+          <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#0f172a' }}>Item *</label>
           <select
             name="inventory_item_id"
             required
             defaultValue={preselectedItem ?? itemList[0]?.id ?? ''}
             style={{
-              padding: '0.75rem 1rem',
+              padding: '0.6rem 0.75rem',
               background: '#ffffff',
               border: '1px solid #cbd5e1',
-              borderRadius: '0.5rem',
+              borderRadius: '6px',
               color: '#0f172a',
-              fontSize: '0.95rem',
+              fontSize: '0.875rem',
             }}
           >
             {itemList.map(i => (
@@ -72,19 +85,19 @@ export default async function StockInPage({
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-            <label style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0f172a' }}>Receiving Branch *</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+            <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#0f172a' }}>Receiving Branch *</label>
             <select
               name="branch_id"
               required
               defaultValue={branchList[0]?.id ?? ''}
               style={{
-                padding: '0.75rem 1rem',
+                padding: '0.6rem 0.75rem',
                 background: '#ffffff',
                 border: '1px solid #cbd5e1',
-                borderRadius: '0.5rem',
+                borderRadius: '6px',
                 color: '#0f172a',
-                fontSize: '0.95rem',
+                fontSize: '0.875rem',
               }}
             >
               {branchList.map(b => (
@@ -93,8 +106,8 @@ export default async function StockInPage({
             </select>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-            <label style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0f172a' }}>Quantity Added *</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+            <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#0f172a' }}>Quantity Added *</label>
             <input
               name="quantity"
               type="number"
@@ -102,93 +115,93 @@ export default async function StockInPage({
               required
               placeholder="e.g. 25"
               style={{
-                padding: '0.75rem 1rem',
+                padding: '0.6rem 0.75rem',
                 background: '#ffffff',
                 border: '1px solid #cbd5e1',
-                borderRadius: '0.5rem',
+                borderRadius: '6px',
                 color: '#0f172a',
-                fontSize: '0.95rem',
+                fontSize: '0.875rem',
               }}
             />
           </div>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-            <label style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0f172a' }}>Measurement Unit</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+            <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#0f172a' }}>Measurement Unit</label>
             <select
               name="unit"
               defaultValue="kg"
               style={{
-                padding: '0.75rem 1rem',
+                padding: '0.6rem 0.75rem',
                 background: '#ffffff',
                 border: '1px solid #cbd5e1',
-                borderRadius: '0.5rem',
+                borderRadius: '6px',
                 color: '#0f172a',
-                fontSize: '0.95rem',
+                fontSize: '0.875rem',
               }}
             >
               <option value="kg">kg (Kilograms)</option>
               <option value="gm">gm (Grams)</option>
               <option value="liters">liters (Liters)</option>
-              <option value="quantity">quantity (Quantity / Units)</option>
+              <option value="quantity">quantity (Units)</option>
             </select>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-            <label style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0f172a' }}>Date of Stock In *</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+            <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#0f172a' }}>Date *</label>
             <input
               name="transaction_date"
               type="date"
               defaultValue={new Date().toISOString().slice(0, 10)}
               required
               style={{
-                padding: '0.75rem 1rem',
+                padding: '0.6rem 0.75rem',
                 background: '#ffffff',
                 border: '1px solid #cbd5e1',
-                borderRadius: '0.5rem',
+                borderRadius: '6px',
                 color: '#0f172a',
-                fontSize: '0.95rem',
+                fontSize: '0.875rem',
               }}
             />
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          <label style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0f172a' }}>Supplier Name</label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+          <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#0f172a' }}>Supplier Name</label>
           <input
             name="supplier"
             type="text"
-            placeholder="e.g. Metro Wholesale, Local Farmer"
+            placeholder="e.g. Metro Wholesale, Local Vendor"
             style={{
-              padding: '0.75rem 1rem',
+              padding: '0.6rem 0.75rem',
               background: '#ffffff',
               border: '1px solid #cbd5e1',
-              borderRadius: '0.5rem',
+              borderRadius: '6px',
               color: '#0f172a',
-              fontSize: '0.95rem',
+              fontSize: '0.875rem',
             }}
           />
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          <label style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0f172a' }}>Notes / Invoice Ref</label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+          <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#0f172a' }}>Notes / Invoice Ref</label>
           <textarea
             name="notes"
             rows={2}
-            placeholder="Invoice number or delivery details"
+            placeholder="Invoice number or notes"
             style={{
-              padding: '0.75rem 1rem',
+              padding: '0.6rem 0.75rem',
               background: '#ffffff',
               border: '1px solid #cbd5e1',
-              borderRadius: '0.5rem',
+              borderRadius: '6px',
               color: '#0f172a',
-              fontSize: '0.95rem',
+              fontSize: '0.875rem',
             }}
           />
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
           <Link href="/restaurant/inventory" className="btn-secondary">Cancel</Link>
           <button type="submit" className="btn-primary">Record Stock In</button>
         </div>

@@ -195,35 +195,33 @@ export default function RestaurantAdminNav({ profile, restaurant }: Props) {
         .ra-nav-item {
           display: flex;
           align-items: center;
-          padding: 0.55rem 0.75rem;
-          border-radius: 4px;
+          padding: 0.5rem 0.75rem;
+          border-radius: 6px;
           color: #475569;
           font-size: 0.84rem;
           text-decoration: none;
           font-weight: 500;
-          transition: all 0.1s;
+          transition: all 0.12s;
           white-space: nowrap;
           letter-spacing: 0.005em;
         }
         .ra-nav-item:hover { background: #f1f5f9; color: #0f172a; }
         .ra-nav-item.active {
-          background: #fef3c7;
-          color: #b45309;
+          background: #0f172a;
+          color: #ffffff;
           font-weight: 600;
-          border-left: 3px solid #d97706;
-          padding-left: calc(0.75rem - 3px);
         }
         .ra-nav-item-terminal {
-          background: #fffbeb;
-          border: 1px solid #fde68a;
-          color: #92400e;
-          font-weight: 600;
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          color: #0f172a;
+          font-weight: 500;
         }
-        .ra-nav-item-terminal:hover { background: #fef3c7; color: #78350f; }
+        .ra-nav-item-terminal:hover { background: #f1f5f9; border-color: #cbd5e1; color: #0f172a; }
         .ra-nav-item-terminal.active {
-          background: #fef3c7;
-          border-left: 3px solid #d97706;
-          padding-left: calc(0.75rem - 3px);
+          background: #0f172a;
+          border-color: #0f172a;
+          color: #ffffff;
         }
         .ra-nav-badge {
           font-size: 0.56rem;

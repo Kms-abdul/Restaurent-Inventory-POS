@@ -46,94 +46,64 @@ export default async function RestaurantDashboard() {
     <div className="ra-page">
       <div className="ra-page-header">
         <div>
-          <p className="ra-greeting">Good {getTimeOfDay()} 👋</p>
+          <p className="ra-greeting">Good {getTimeOfDay()}</p>
           <h1>{ctx.restaurant?.name}</h1>
         </div>
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-          <Link
-            href="/staff/pos"
-            className="btn-primary"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              padding: '0.65rem 1.25rem',
-              fontSize: '0.95rem',
-              background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-              boxShadow: '0 4px 14px rgba(245, 158, 11, 0.4)',
-            }}
-          >
-            🖥️ Open POS Terminal (Take Orders)
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <Link href="/staff/pos" className="btn-primary">
+            Open POS Terminal
           </Link>
-          <Link
-            href="/staff/kitchen"
-            className="btn-ghost"
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 1rem' }}
-          >
-            👨‍🍳 Kitchen KOT
+          <Link href="/staff/kitchen" className="btn-secondary">
+            Kitchen KOT
           </Link>
         </div>
       </div>
 
       {/* KPI Cards */}
-      <div className="kpi-grid">
-        <div className="kpi-card kpi-revenue">
-          <div className="kpi-icon">💰</div>
-          <div className="kpi-content">
-            <div className="kpi-label">Today&apos;s Revenue</div>
-            <div className="kpi-value">₹{(totalRevenue / 100).toLocaleString('en-IN', { minimumFractionDigits: 0 })}</div>
-          </div>
+      <div className="clean-stat-grid">
+        <div className="clean-stat-card">
+          <span className="clean-stat-label">Today&apos;s Revenue</span>
+          <span className="clean-stat-val">₹{(totalRevenue / 100).toLocaleString('en-IN', { minimumFractionDigits: 0 })}</span>
+          <span className="clean-stat-sub">Settled sales</span>
         </div>
-        <div className="kpi-card kpi-orders">
-          <div className="kpi-icon">📋</div>
-          <div className="kpi-content">
-            <div className="kpi-label">Total Orders</div>
-            <div className="kpi-value">{totalOrders}</div>
-          </div>
+        <div className="clean-stat-card">
+          <span className="clean-stat-label">Total Orders</span>
+          <span className="clean-stat-val">{totalOrders}</span>
+          <span className="clean-stat-sub">Placed today</span>
         </div>
-        <div className="kpi-card kpi-kitchen">
-          <div className="kpi-icon">👨‍🍳</div>
-          <div className="kpi-content">
-            <div className="kpi-label">Pending Kitchen (KOT)</div>
-            <div className="kpi-value">{pendingKitchen}</div>
-          </div>
+        <div className="clean-stat-card">
+          <span className="clean-stat-label">Kitchen Queue</span>
+          <span className="clean-stat-val">{pendingKitchen}</span>
+          <span className="clean-stat-sub">Pending / Cooking KOTs</span>
         </div>
-        <div className={`kpi-card ${(lowStockCount ?? 0) > 0 ? 'kpi-warning' : 'kpi-ok'}`}>
-          <div className="kpi-icon">{(lowStockCount ?? 0) > 0 ? '⚠️' : '✅'}</div>
-          <div className="kpi-content">
-            <div className="kpi-label">Low Stock Items</div>
-            <div className="kpi-value">{lowStockCount ?? 0}</div>
-          </div>
+        <div className="clean-stat-card">
+          <span className="clean-stat-label">Low Stock</span>
+          <span className="clean-stat-val">{lowStockCount ?? 0}</span>
+          <span className="clean-stat-sub">{(lowStockCount ?? 0) > 0 ? 'Items below reorder level' : 'Stock levels normal'}</span>
         </div>
       </div>
 
-      {/* Primary Terminal Launchpad */}
-      <div className="ra-section" style={{ background: '#ffffff', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-        <h2 style={{ fontSize: '1.15rem', marginBottom: '0.4rem', color: '#0f172a', fontWeight: 800 }}>
-          ⚡ Front of House &amp; Operations Launchpad
-        </h2>
-        <p style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: '1.25rem', fontWeight: 500 }}>
-          Launch cashier terminals, live kitchen display, physical count audits, and daily cash handover reports.
-        </p>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+      {/* Quick Launchpad */}
+      <div className="ra-section">
+        <div className="ra-section-header">
+          <h2>Operations &amp; Terminals</h2>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.875rem' }}>
           <Link
             href="/staff/pos"
             style={{
-              background: '#fefce8',
-              border: '1.5px solid #fde68a',
-              borderRadius: '0.75rem',
+              background: '#ffffff',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
               padding: '1.25rem',
               textDecoration: 'none',
-              transition: 'all 0.15s',
-              boxShadow: '0 2px 5px rgba(245, 158, 11, 0.08)',
+              transition: 'all 0.12s',
             }}
           >
-            <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🖥️</div>
-            <strong style={{ color: '#b45309', fontSize: '1.05rem', display: 'block', marginBottom: '0.2rem', fontWeight: 800 }}>
+            <strong style={{ color: '#0f172a', fontSize: '0.95rem', display: 'block', marginBottom: '0.25rem' }}>
               POS Terminal
             </strong>
-            <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>
+            <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
               Take orders, customer billing, and settle payments.
             </span>
           </Link>
@@ -141,63 +111,57 @@ export default async function RestaurantDashboard() {
           <Link
             href="/staff/kitchen"
             style={{
-              background: '#eff6ff',
-              border: '1.5px solid #bfdbfe',
-              borderRadius: '0.75rem',
+              background: '#ffffff',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
               padding: '1.25rem',
               textDecoration: 'none',
-              transition: 'all 0.15s',
-              boxShadow: '0 2px 5px rgba(59, 130, 246, 0.08)',
+              transition: 'all 0.12s',
             }}
           >
-            <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>👨‍🍳</div>
-            <strong style={{ color: '#1d4ed8', fontSize: '1.05rem', display: 'block', marginBottom: '0.2rem', fontWeight: 800 }}>
+            <strong style={{ color: '#0f172a', fontSize: '0.95rem', display: 'block', marginBottom: '0.25rem' }}>
               Kitchen KOT
             </strong>
-            <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>
+            <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
               Live chef prep queue and fulfillment ticketing.
+            </span>
+          </Link>
+
+          <Link
+            href="/restaurant/inventory/daily"
+            style={{
+              background: '#ffffff',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              padding: '1.25rem',
+              textDecoration: 'none',
+              transition: 'all 0.12s',
+            }}
+          >
+            <strong style={{ color: '#0f172a', fontSize: '0.95rem', display: 'block', marginBottom: '0.25rem' }}>
+              Daily Stock Report
+            </strong>
+            <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+              Opening, purchases, consumption, and closing ledger.
             </span>
           </Link>
 
           <Link
             href="/restaurant/inventory/audit"
             style={{
-              background: '#f0fdf4',
-              border: '1.5px solid #bbf7d0',
-              borderRadius: '0.75rem',
+              background: '#ffffff',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
               padding: '1.25rem',
               textDecoration: 'none',
-              transition: 'all 0.15s',
-              boxShadow: '0 2px 5px rgba(34, 197, 94, 0.08)',
+              transition: 'all 0.12s',
             }}
           >
-            <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📋</div>
-            <strong style={{ color: '#15803d', fontSize: '1.05rem', display: 'block', marginBottom: '0.2rem', fontWeight: 800 }}>
+            <strong style={{ color: '#0f172a', fontSize: '0.95rem', display: 'block', marginBottom: '0.25rem' }}>
               EOD Stock Audit
             </strong>
-            <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>
-              Enter shelf count, check variance &amp; wastage loss.
-            </span>
-          </Link>
-
-          <Link
-            href="/restaurant/reports/collection"
-            style={{
-              background: '#fdf2f8',
-              border: '1.5px solid #fbcfe8',
-              borderRadius: '0.75rem',
-              padding: '1.25rem',
-              textDecoration: 'none',
-              transition: 'all 0.15s',
-              boxShadow: '0 2px 5px rgba(236, 72, 153, 0.08)',
-            }}
-          >
-            <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🧾</div>
-            <strong style={{ color: '#be185d', fontSize: '1.05rem', display: 'block', marginBottom: '0.2rem', fontWeight: 800 }}>
-              Collection Report
-            </strong>
-            <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>
-              Cashier drawer handover, cash vs UPI totals.
+            <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+              Physical closing shelf count, variance, and loss audit.
             </span>
           </Link>
         </div>
@@ -207,14 +171,14 @@ export default async function RestaurantDashboard() {
       <div className="ra-section">
         <div className="ra-section-header">
           <h2>Branches</h2>
-          <Link href="/restaurant/branches" className="btn-ghost-sm" id="manageBranchesBtn">Manage →</Link>
+          <Link href="/restaurant/branches" className="btn-ghost-sm" id="manageBranchesBtn">Manage Branches →</Link>
         </div>
         <div className="branch-cards">
           {(branches ?? []).map(b => (
             <div className="branch-card" key={b.id}>
               <div className="branch-card-name">{b.name}</div>
               {b.city && <div className="branch-card-city">{b.city}</div>}
-              <span className={`badge ${b.is_active ? 'badge-green' : 'badge-red'}`}>
+              <span className={`badge ${b.is_active ? 'badge-neutral' : 'badge-amber'}`}>
                 {b.is_active ? 'Active' : 'Inactive'}
               </span>
             </div>
@@ -228,13 +192,15 @@ export default async function RestaurantDashboard() {
 
       {/* Quick Actions */}
       <div className="ra-section">
-        <h2>Management &amp; Setup</h2>
+        <div className="ra-section-header">
+          <h2>Management &amp; Setup</h2>
+        </div>
         <div className="quick-actions">
-          <Link href="/restaurant/menu" className="qa-btn" id="qaMenuBtn">📝 Menu &amp; Recipes</Link>
-          <Link href="/restaurant/inventory" className="qa-btn" id="qaInventoryBtn">📦 Inventory Stock</Link>
-          <Link href="/restaurant/users" className="qa-btn" id="qaUsersBtn">👥 Users &amp; Cashiers</Link>
-          <Link href="/restaurant/roles" className="qa-btn" id="qaRolesBtn">🔐 Roles &amp; Permissions</Link>
-          <Link href="/restaurant/reports" className="qa-btn" id="qaReportsBtn">📈 Sales Reports</Link>
+          <Link href="/restaurant/menu" className="qa-btn" id="qaMenuBtn">Menu &amp; Recipes</Link>
+          <Link href="/restaurant/inventory" className="qa-btn" id="qaInventoryBtn">Inventory Stock</Link>
+          <Link href="/restaurant/users" className="qa-btn" id="qaUsersBtn">Users &amp; Staff</Link>
+          <Link href="/restaurant/roles" className="qa-btn" id="qaRolesBtn">Roles &amp; Permissions</Link>
+          <Link href="/restaurant/reports" className="qa-btn" id="qaReportsBtn">Sales Reports</Link>
         </div>
       </div>
     </div>
