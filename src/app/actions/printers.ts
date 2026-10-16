@@ -6,11 +6,12 @@ import { revalidatePath } from 'next/cache'
 export async function addPrinter(formData: FormData) {
   const supabase = await createClient()
 
-  const branch_id = formData.get('branch_id') as string
-  const name = formData.get('name') as string
-  const type = formData.get('type') as 'receipt' | 'kitchen'
+  const branch_id    = formData.get('branch_id')    as string
+  const windows_name = formData.get('windows_name') as string
+  const label        = formData.get('label')        as string
+  const printer_type = formData.get('printer_type') as 'receipt' | 'kitchen'
 
-  if (!branch_id || !name || !type) {
+  if (!branch_id || !windows_name || !printer_type) {
     throw new Error('All fields are required.')
   }
 
@@ -18,8 +19,9 @@ export async function addPrinter(formData: FormData) {
     .from('printers')
     .insert({
       branch_id,
-      name,
-      type,
+      windows_name,
+      label: label || windows_name,   // fallback label to the windows name
+      printer_type,
       is_active: true
     })
     .select()
@@ -30,6 +32,7 @@ export async function addPrinter(formData: FormData) {
   }
 
   revalidatePath('/super-admin/restaurants')
+  revalidatePath('/restaurant/branches')
   return data
 }
 

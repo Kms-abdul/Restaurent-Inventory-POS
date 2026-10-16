@@ -4,7 +4,8 @@ import { useState, useCallback, useTransition, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { CartItem } from '@/types/database'
-import { createPOSOrder, listOrders, updateFulfillmentStatus, voidOrder } from '@/app/actions/orders'
+import { createPOSOrder, createKOTPrintJob, listOrders, updateFulfillmentStatus, voidOrder } from '@/app/actions/orders'
+import { printDirectToThermalPrinter } from '@/app/actions/print-direct'
 
 interface Category {
   id: string
@@ -130,6 +131,8 @@ export default function POSTerminal({
 
   // Tracks which individual order action is in-flight (for per-button loading states)
   const [pendingAction, setPendingAction] = useState<string | null>(null)
+  const [isDirectPrinting, setIsDirectPrinting] = useState<boolean>(false)
+  const [directPrintStatus, setDirectPrintStatus] = useState<string | null>(null)
 
   // Discount & Special Order State
   const [discountType, setDiscountType] = useState<'percent' | 'fixed'>('percent')
@@ -349,12 +352,149 @@ export default function POSTerminal({
         clearDiscount()
         setOrderNotes('')
 
+        // Create a KOT print job for the local Print Agent (silent thermal print)
+        void createKOTPrintJob({
+          branchId,
+          orderId:        result.order_id,
+          orderNo:        result.order_no,
+          restaurantName,
+          branchName,
+          cashierName,
+          notes:          combinedNotes || undefined,
+          items: createdOrder.items.map(i => ({
+            name: i.name,
+            qty:  i.qty,
+          })),
+        })
+
+        // Auto-print directly to local Windows thermal printer if enabled
+        if (autoPrintKOT) {
+          void printDirectToThermalPrinter({
+            orderNo: result.order_no,
+            time: orderTime,
+            cashier: cashierName,
+            notes: combinedNotes || undefined,
+            items: createdOrder.items.map(i => ({ name: i.name, qty: i.qty })),
+          })
+        }
+
         // Refresh order list in background — UI already updated above
         void loadOrders()
       } catch (err: unknown) {
         alert('Order failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
       }
     })
+  }
+
+  // Print ticket target state for thermal printer
+  const [ticketToPrint, setTicketToPrint] = useState<{
+    order_no: number
+    time: string
+    cashier: string
+    tableNumber?: string
+    notes?: string
+    items: { name: string; qty: number }[]
+  } | null>(null)
+
+  // Active ticket data: selected override > active cart > last settled order
+  const activePrintTicket = useMemo(() => {
+    if (ticketToPrint) return ticketToPrint
+
+    if (cart.length > 0) {
+      let combinedNotes = orderNotes.trim()
+      if (discountPaise > 0) {
+        const discTag = discountReason.trim() || (isRelativeOrFree ? 'Relative (Free)' : `${discountValue}% Off`)
+        combinedNotes = combinedNotes ? `${combinedNotes} [${discTag}]` : `[${discTag}]`
+      }
+      return {
+        order_no: nextOrderNo,
+        time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase(),
+        cashier: cashierName,
+        notes: combinedNotes || undefined,
+        items: cart.map(i => ({ name: i.name, qty: i.qty })),
+      }
+    }
+
+    if (lastOrder && lastOrder.items && lastOrder.items.length > 0) {
+      return {
+        order_no: lastOrder.order_no,
+        time: lastOrder.time || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase(),
+        cashier: cashierName,
+        notes: lastOrder.notes || undefined,
+        items: lastOrder.items.map(i => ({ name: i.name, qty: i.qty })),
+      }
+    }
+
+    return null
+  }, [ticketToPrint, cart, nextOrderNo, cashierName, orderNotes, discountPaise, discountReason, isRelativeOrFree, discountValue, lastOrder])
+
+  // Print trigger handler — prints directly to POSIO QX300 without browser dialogs
+  const handlePrintReceipt = async (overrideOrder?: {
+    order_no: number
+    time: string
+    cashier: string
+    tableNumber?: string
+    notes?: string
+    items: { name: string; qty: number }[]
+  }) => {
+    let target = overrideOrder
+    if (!target) {
+      if (cart.length > 0) {
+        let combinedNotes = orderNotes.trim()
+        if (discountPaise > 0) {
+          const discTag = discountReason.trim() || (isRelativeOrFree ? 'Relative (Free)' : `${discountValue}% Off`)
+          combinedNotes = combinedNotes ? `${combinedNotes} [${discTag}]` : `[${discTag}]`
+        }
+        target = {
+          order_no: nextOrderNo,
+          time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase(),
+          cashier: cashierName,
+          notes: combinedNotes || undefined,
+          items: cart.map(i => ({ name: i.name, qty: i.qty })),
+        }
+      } else if (lastOrder && lastOrder.items && lastOrder.items.length > 0) {
+        target = {
+          order_no: lastOrder.order_no,
+          time: lastOrder.time || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase(),
+          cashier: cashierName,
+          notes: lastOrder.notes || undefined,
+          items: lastOrder.items.map(i => ({ name: i.name, qty: i.qty })),
+        }
+      }
+    }
+
+    if (!target || target.items.length === 0) {
+      alert('No items to print. Please add items to the order or settle a bill first.')
+      return
+    }
+
+    setTicketToPrint(target)
+    setIsDirectPrinting(true)
+
+    // Dispatch directly to Windows thermal printer
+    try {
+      const res = await printDirectToThermalPrinter({
+        orderNo: target.order_no,
+        time: target.time,
+        cashier: target.cashier,
+        notes: target.notes,
+        items: target.items,
+      })
+
+      if (res.success) {
+        setDirectPrintStatus('printed')
+        setTimeout(() => setDirectPrintStatus(null), 3000)
+        return // Direct print succeeded! No browser dialog needed!
+      }
+
+      console.warn('Direct print failed, falling back to browser print:', res.error)
+      window.print()
+    } catch (err) {
+      console.error('Error during direct print, fallback to browser print:', err)
+      window.print()
+    } finally {
+      setIsDirectPrinting(false)
+    }
   }
 
   // Filter items for display
@@ -846,13 +986,16 @@ export default function POSTerminal({
                 <div className="action-buttons-column">
                   <button
                     type="button"
-                    onClick={() => {
-                      if (lastOrder) window.print()
-                      else alert('No previous settled order to print.')
-                    }}
+                    disabled={isDirectPrinting}
+                    onClick={() => handlePrintReceipt()}
                     className="btn-print-receipt"
+                    style={directPrintStatus === 'printed' ? { background: '#dcfce7', color: '#166534', borderColor: '#86efac' } : undefined}
                   >
-                    🖨️ Print Receipt
+                    {isDirectPrinting
+                      ? '⏳ Printing to QX300...'
+                      : directPrintStatus === 'printed'
+                        ? '✅ Printed to QX300!'
+                        : '🖨️ Print Receipt'}
                   </button>
 
                   <button
@@ -881,11 +1024,16 @@ export default function POSTerminal({
           </div>
         )}
 
-        {/* TAB 2: KOT SCREEN (Screenshot 2) */}
+        {/* TAB 2: KOT SCREEN */}
         {activeTab === 'kot' && (
           <div className="kot-tab-layout">
+
+
+
+            {/* ── Visible on-screen KOT card ── */}
             <div className="kot-ticket-card">
               <div className="kot-ticket-header">
+                <div style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: '0.25rem' }}>{restaurantName}</div>
                 <h3>KITCHEN ORDER TICKET</h3>
                 <div className="kot-divider" />
                 <h1>ORDER #{lastOrder?.order_no ?? nextOrderNo - 1}</h1>
@@ -893,15 +1041,14 @@ export default function POSTerminal({
               </div>
 
               <div className="kot-ticket-body">
+                <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.5rem' }}>
+                  🕐 {lastOrder?.time ?? '—'} &nbsp;·&nbsp; 👤 {cashierName}
+                </div>
                 {lastOrder?.notes && (
-                  <div className="kot-order-tag">
-                    🏷️ {lastOrder.notes}
-                  </div>
+                  <div className="kot-order-tag">🏷️ {lastOrder.notes}</div>
                 )}
                 {lastOrder?.total === 0 && (
-                  <div className="kot-complimentary-badge">
-                    ★ COMPLIMENTARY / RELATIVE (₹0.00) ★
-                  </div>
+                  <div className="kot-complimentary-badge">★ COMPLIMENTARY / RELATIVE (₹0.00) ★</div>
                 )}
                 <div className="kot-items-heading">ITEMS:</div>
                 <div className="kot-items-list">
@@ -910,7 +1057,8 @@ export default function POSTerminal({
                   ) : (
                     lastOrder.items.map((item, idx) => (
                       <div key={idx} className="kot-item-line">
-                        • {item.name || 'Item'} × {item.qty}
+                        <span>{item.name || 'Item'}</span>
+                        <span style={{ fontWeight: 700 }}>× {item.qty}</span>
                       </div>
                     ))
                   )}
@@ -935,13 +1083,13 @@ export default function POSTerminal({
                 <div className="kot-divider" />
               </div>
 
-              <div className="kot-ticket-footer">
+              <div className="kot-ticket-footer no-print">
                 <button
                   type="button"
-                  onClick={() => window.print()}
+                  onClick={() => handlePrintReceipt()}
                   className="kot-print-again-btn"
                 >
-                  🖨️ Print Again
+                  🖨️ Print KOT
                 </button>
               </div>
             </div>
@@ -1158,7 +1306,18 @@ export default function POSTerminal({
                             <td className="td-actions">
                               <button
                                 type="button"
-                                onClick={() => window.print()}
+                                onClick={() => {
+                                  handlePrintReceipt({
+                                    order_no: o.order_no,
+                                    time: new Date(o.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase(),
+                                    cashier: o.profiles?.name || cashierName,
+                                    notes: o.notes || undefined,
+                                    items: (o.order_items || []).map(oi => ({
+                                      name: oi.item_name_at_sale || oi.item_name || 'Item',
+                                      qty: oi.qty ?? 1,
+                                    })),
+                                  })
+                                }}
                                 className="action-btn-print"
                               >
                                 Print
@@ -1239,6 +1398,40 @@ export default function POSTerminal({
           </div>
         )}
       </main>
+
+      {/* ── Hidden Thermal Print Ticket (POSIO QX300 / 80mm ESC/POS compatible) ── */}
+      <div className="print-area">
+        <div className="print-ticket-wrapper">
+          <div className="print-title">** KITCHEN ORDER TICKET **</div>
+          <div className="print-divider">===============================</div>
+          <div className="print-order-no">ORDER #{activePrintTicket?.order_no ?? nextOrderNo}</div>
+          <div className="print-divider">===============================</div>
+          <div className="print-meta-line">Time: {activePrintTicket?.time ?? new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase()}</div>
+          <div className="print-meta-line">By: {activePrintTicket?.cashier ?? cashierName}</div>
+          {activePrintTicket?.notes && (
+            <div className="print-meta-line">Note: {activePrintTicket.notes}</div>
+          )}
+          <div className="print-divider">-------------------------------</div>
+          <div className="print-items-title">ITEMS:</div>
+          <div className="print-items-list">
+            {(activePrintTicket?.items && activePrintTicket.items.length > 0) ? (
+              activePrintTicket.items.map((item, idx) => (
+                <div key={idx} className="print-item-row">
+                  <span className="print-item-name">&nbsp;&nbsp;{item.name || 'Item'}</span>
+                  <span className="print-item-qty">x{item.qty}</span>
+                </div>
+              ))
+            ) : (
+              <div className="print-item-row">
+                <span className="print-item-name">&nbsp;&nbsp;No items</span>
+                <span className="print-item-qty">x0</span>
+              </div>
+            )}
+          </div>
+          <div className="print-divider">===============================</div>
+          <div className="print-footer">** PLEASE PREPARE **</div>
+        </div>
+      </div>
 
       {/* ─── Modern Light Theme Styles ────────────── */}
       <style jsx>{`

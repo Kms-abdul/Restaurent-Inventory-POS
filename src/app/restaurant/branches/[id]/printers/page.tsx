@@ -69,11 +69,12 @@ export default async function BranchPrintersPage({ params }: { params: Promise<{
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <span style={{ fontSize: '1.4rem' }}>{p.type === 'kitchen' ? '👨‍🍳' : '🧾'}</span>
+                  <span style={{ fontSize: '1.4rem' }}>{p.printer_type === 'kitchen' ? '👨‍🍳' : '🧾'}</span>
                   <div>
-                    <strong style={{ color: '#0f172a', fontSize: '0.95rem' }}>{p.name}</strong>
+                  <strong style={{ color: '#0f172a', fontSize: '0.95rem' }}>{p.label || p.windows_name}</strong>
                     <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                      Type: <span style={{ textTransform: 'capitalize', fontWeight: 500 }}>{p.type} Printer</span>
+                      Windows name: <code style={{ background: '#f1f5f9', padding: '0 4px', borderRadius: 3 }}>{p.windows_name}</code> &nbsp;·&nbsp;
+                      Type: <span style={{ textTransform: 'capitalize', fontWeight: 500 }}>{p.printer_type} Printer</span>
                     </div>
                   </div>
                 </div>
@@ -108,13 +109,14 @@ export default async function BranchPrintersPage({ params }: { params: Promise<{
         <form action={addPrinter} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           <input type="hidden" name="branch_id" value={branch.id} />
 
+          {/* Windows Printer Name */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
             <label style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0f172a' }}>Windows Printer Name *</label>
             <input
-              name="name"
+              name="windows_name"
               type="text"
               required
-              placeholder="e.g. POS-80, Thermal Kitchen, EPSON TM-T82"
+              placeholder="e.g. POS-80, XP-80, EPSON TM-T82"
               style={{
                 padding: '0.75rem 1rem',
                 background: '#ffffff',
@@ -125,14 +127,35 @@ export default async function BranchPrintersPage({ params }: { params: Promise<{
               }}
             />
             <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-              Must match the exact printer name shown in Windows &quot;Printers &amp; scanners&quot; settings on the local terminal.
+              Must match the <strong>exact</strong> printer name in Windows → Settings → Printers &amp; scanners.
+              Run <code style={{ background: '#f1f5f9', padding: '1px 5px', borderRadius: 3 }}>Get-Printer | Select-Object Name</code> in PowerShell to find it.
             </span>
           </div>
 
+          {/* Display Label */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            <label style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0f172a' }}>Display Label</label>
+            <input
+              name="label"
+              type="text"
+              placeholder="e.g. Counter Receipt Printer, Kitchen KOT"
+              style={{
+                padding: '0.75rem 1rem',
+                background: '#ffffff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '0.5rem',
+                color: '#0f172a',
+                fontSize: '0.95rem',
+              }}
+            />
+            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Friendly name shown in the app (optional — defaults to Windows printer name).</span>
+          </div>
+
+          {/* Printer Type */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
             <label style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0f172a' }}>Printer Type *</label>
             <select
-              name="type"
+              name="printer_type"
               required
               defaultValue="receipt"
               style={{

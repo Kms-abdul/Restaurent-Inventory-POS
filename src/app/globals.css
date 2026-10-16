@@ -1273,4 +1273,172 @@ button:disabled {
 
 button:disabled:active {
   transform: none !important;
-}
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   @MEDIA PRINT — Thermal Receipt / KOT Printing (POSIO QX300 / 80mm ESC/POS)
+   Ensures window.print() prints the clean KOT without blank page or UI elements
+   ───────────────────────────────────────────────────────────────────────────── */
+.print-area {
+  display: none !important;
+}
+
+@media print {
+  @page {
+    margin: 0;
+    size: 80mm auto;
+  }
+
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    width: 80mm !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    font-size: 10.5pt !important;
+  }
+
+  /* Hide screen-only interactive UI elements */
+  #page-loader,
+  .no-print,
+  .pos-top-header,
+  .nav-tabs-bar,
+  .pos-body,
+  nav,
+  header,
+  button {
+    display: none !important;
+  }
+
+  /* Keep container transparent, non-flex, and natural height */
+  .pos-shell {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  /* The print ticket container */
+  .print-area {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    width: 72mm !important;
+    max-width: 80mm !important;
+    margin: 0 auto !important;
+    padding: 3mm 2mm !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    box-sizing: border-box !important;
+    overflow: visible !important;
+    font-family: 'Courier New', Courier, monospace !important;
+  }
+
+  .print-area * {
+    visibility: visible !important;
+    color: #000000 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  .print-ticket-wrapper {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-family: 'Courier New', Courier, monospace !important;
+  }
+
+  .print-title {
+    text-align: center !important;
+    font-size: 11pt !important;
+    font-weight: 900 !important;
+    margin: 0 0 1mm 0 !important;
+    letter-spacing: 0.3px !important;
+    white-space: nowrap !important;
+  }
+
+  .print-divider {
+    text-align: center !important;
+    font-size: 10pt !important;
+    font-weight: 700 !important;
+    letter-spacing: 0px !important;
+    line-height: 1 !important;
+    margin: 1.5mm 0 !important;
+    overflow: hidden !important;
+    white-space: nowrap !important;
+    user-select: none !important;
+  }
+
+  .print-order-no {
+    text-align: center !important;
+    font-size: 15pt !important;
+    font-weight: 900 !important;
+    letter-spacing: 1px !important;
+    margin: 1.5mm 0 !important;
+    white-space: nowrap !important;
+  }
+
+  .print-meta-line {
+    font-size: 10pt !important;
+    font-weight: 700 !important;
+    line-height: 1.35 !important;
+    margin: 0.5mm 0 !important;
+    white-space: nowrap !important;
+  }
+
+  .print-items-title {
+    font-size: 10.5pt !important;
+    font-weight: 900 !important;
+    margin: 1.5mm 0 1mm 0 !important;
+  }
+
+  .print-items-list {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 1mm !important;
+  }
+
+  .print-item-row {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: baseline !important;
+    font-size: 10.5pt !important;
+    font-weight: 700 !important;
+    line-height: 1.25 !important;
+  }
+
+  .print-item-name {
+    text-align: left !important;
+    flex: 1 1 auto !important;
+    word-break: break-word !important;
+    padding-right: 2mm !important;
+  }
+
+  .print-item-qty {
+    text-align: right !important;
+    white-space: nowrap !important;
+    font-weight: 900 !important;
+    flex: 0 0 auto !important;
+  }
+
+  .print-footer {
+    text-align: center !important;
+    font-size: 11pt !important;
+    font-weight: 900 !important;
+    letter-spacing: 0.5px !important;
+    margin: 1.5mm 0 0 0 !important;
+    white-space: nowrap !important;
+  }
+}
+

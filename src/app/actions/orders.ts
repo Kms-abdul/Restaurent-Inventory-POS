@@ -4,6 +4,53 @@ import { createClient, createServiceClient, getActionContext } from '@/utils/sup
 import { revalidatePath } from 'next/cache'
 import type { CartItem, PaymentMode } from '@/types/database'
 
+/**
+ * Create a KOT print job so the local Print Agent picks it up and
+ * prints silently to the thermal printer — no browser dialog.
+ */
+export async function createKOTPrintJob(params: {
+  branchId: string
+  orderId: string
+  orderNo: number
+  restaurantName: string
+  branchName: string
+  cashierName: string
+  tableNumber?: string
+  notes?: string
+  items: { name: string; qty: number; notes?: string }[]
+}) {
+  const ctx = await getActionContext()
+  if (!ctx) return // silent — don't block checkout
+
+  const supabase = ctx.isSuperAdmin ? await createServiceClient() : await createClient()
+
+  const payload = {
+    restaurant_name: params.restaurantName,
+    branch_name:     params.branchName,
+    order_no:        params.orderNo,
+    cashier_name:    params.cashierName,
+    table_number:    params.tableNumber ?? null,
+    created_at:      new Date().toISOString(),
+    order_notes:     params.notes ?? null,
+    items: params.items.map(i => ({
+      name:  i.name,
+      qty:   i.qty,
+      notes: i.notes ?? null,
+    })),
+  }
+
+  await supabase.from('print_jobs').insert({
+    branch_id:    params.branchId,
+    order_id:     params.orderId,
+    printer_type: 'kitchen',
+    payload,
+    status:       'pending',
+    copies:       1,
+  })
+  // intentionally no throw — print job failure must not block checkout
+}
+
+
 export async function createPOSOrder(params: {
   branchId: string
   restaurantId: string
