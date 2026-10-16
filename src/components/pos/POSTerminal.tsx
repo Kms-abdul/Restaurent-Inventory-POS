@@ -141,6 +141,7 @@ export default function POSTerminal({
   const [availablePrinters, setAvailablePrinters] = useState<string[]>(['POSIO QX300'])
   const [isLoadingPrinters, setIsLoadingPrinters] = useState<boolean>(false)
   const [printerSaveSuccess, setPrinterSaveSuccess] = useState<boolean>(false)
+  const [billingStatus, setBillingStatus] = useState<string | null>(null)
 
   // Printer Configuration Settings (Saved in LocalStorage)
   const [printerSettings, setPrinterSettings] = useState({
@@ -467,6 +468,9 @@ export default function POSTerminal({
             })
           }, delayMs)
         }
+
+        setBillingStatus('success')
+        setTimeout(() => setBillingStatus(null), 3000)
 
         // Refresh order list in background — UI already updated above
         void loadOrders()
@@ -897,21 +901,31 @@ export default function POSTerminal({
             </div>
 
             {/* Right Area: Current Order Cart (Screenshots 1 & 5) */}
+            {/* Right Area: Current Order Cart */}
             <div className="order-right-panel">
-              <h2 className="cart-title">🛒 Current Order</h2>
+              <div className="cart-top-bar">
+                <div className="cart-top-left">
+                  <h2 className="cart-title">🛒 Current Order</h2>
+                  <div className="order-no-pill">
+                    <span className="order-no-label">Order #</span>
+                    <span className="order-no-num">{nextOrderNo}</span>
+                    <span className="auto-tag">AUTO</span>
+                  </div>
+                </div>
 
-              {/* Order Number Box (AUTO) */}
-              <div className="order-no-box">
-                <div className="order-no-header">
-                  <span>Order Number</span>
-                  <span className="auto-tag">AUTO</span>
-                </div>
-                <div className="order-no-value">
-                  {nextOrderNo}
-                </div>
+                {cart.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearCart}
+                    className="btn-top-clear"
+                    title="Clear current cart"
+                  >
+                    Clear
+                  </button>
+                )}
               </div>
 
-              {/* Cart Items List */}
+              {/* Cart Items List — takes all available height and scrolls smoothly for 10-20+ items */}
               <div className="cart-items-container">
                 {cart.length === 0 ? (
                   <div className="empty-cart-msg">Add items to order</div>
@@ -924,152 +938,159 @@ export default function POSTerminal({
                           type="button"
                           onClick={() => removeFromCart(item.menuItemId)}
                           className="cart-item-delete"
+                          title="Remove item"
                         >
                           ✕
                         </button>
                       </div>
 
-                      <div className="cart-item-calc">
-                        ₹{(item.unitPrice / 100).toFixed(2)} × {item.qty} = ₹{(item.lineTotal / 100).toFixed(2)}
-                      </div>
+                      <div className="cart-item-row-bottom">
+                        <div className="cart-item-calc">
+                          ₹{(item.unitPrice / 100).toFixed(2)} × {item.qty} = <strong className="cart-item-subtotal">₹{(item.lineTotal / 100).toFixed(2)}</strong>
+                        </div>
 
-                      <div className="cart-stepper-row">
-                        <button
-                          type="button"
-                          onClick={() => updateQty(item.menuItemId, -1)}
-                          className="stepper-btn"
-                        >
-                          -
-                        </button>
-                        <span className="stepper-val">{item.qty}</span>
-                        <button
-                          type="button"
-                          onClick={() => updateQty(item.menuItemId, 1)}
-                          className="stepper-btn"
-                        >
-                          +
-                        </button>
+                        <div className="cart-stepper-row">
+                          <button
+                            type="button"
+                            onClick={() => updateQty(item.menuItemId, -1)}
+                            className="stepper-btn"
+                            title="Decrease quantity"
+                          >
+                            -
+                          </button>
+                          <span className="stepper-val">{item.qty}</span>
+                          <button
+                            type="button"
+                            onClick={() => updateQty(item.menuItemId, 1)}
+                            className="stepper-btn"
+                            title="Increase quantity"
+                          >
+                            +
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))
                 )}
               </div>
 
-              {/* Discount & Special Order Section */}
-              {canDiscount && (
-              <div className="cart-discount-box">
-                <div className="discount-header-row">
-                  <span className="discount-title">🏷️ Discount &amp; Special</span>
-                  {discountPaise > 0 && (
-                    <button type="button" onClick={clearDiscount} className="btn-clear-discount">
-                      ✕ Reset
-                    </button>
-                  )}
-                </div>
-
-                {/* Quick Presets Grid */}
-                <div className="discount-presets-grid">
-                  {/* Big Prominent Relative / Free Meal Button */}
-                  <button
-                    type="button"
-                    onClick={toggleRelativeOrder}
-                    className={`btn-discount-relative ${isRelativeOrFree ? 'active' : ''}`}
-                    title="100% Free meal for owner's relatives / VIPs"
-                  >
-                    👑 Relative (₹0)
-                  </button>
-
-                  {/* Standard percentage buttons */}
-                  {DISCOUNT_PRESETS.map(pct => (
-                    <button
-                      key={pct}
-                      type="button"
-                      onClick={() => applyPercentPreset(pct)}
-                      className={`btn-discount-preset ${discountType === 'percent' && discountValue === pct ? 'active' : ''}`}
-                    >
-                      {pct}%
-                    </button>
-                  ))}
-
-                  {/* Custom expander */}
-                  <button
-                    type="button"
-                    onClick={() => setShowCustomDiscount(!showCustomDiscount)}
-                    className={`btn-discount-preset ${showCustomDiscount ? 'active-custom' : ''}`}
-                  >
-                    {showCustomDiscount ? '▲' : '✏️ Other'}
-                  </button>
-                </div>
-
-                {/* Custom discount panel if expanded */}
-                {showCustomDiscount && (
-                  <div className="custom-discount-panel">
-                    <div className="custom-type-switch">
-                      <button
-                        type="button"
-                        onClick={() => setDiscountType('percent')}
-                        className={`type-switch-btn ${discountType === 'percent' ? 'active' : ''}`}
-                      >
-                        % Percent
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDiscountType('fixed')}
-                        className={`type-switch-btn ${discountType === 'fixed' ? 'active' : ''}`}
-                      >
-                        ₹ Flat Off
-                      </button>
-                    </div>
-
-                    <div className="custom-inputs-row">
-                      <div className="custom-val-wrapper">
-                        <span className="val-prefix">{discountType === 'percent' ? '%' : '₹'}</span>
-                        <input
-                          type="number"
-                          min="0"
-                          max={discountType === 'percent' ? 100 : subtotalRupees}
-                          step={discountType === 'percent' ? '1' : '0.5'}
-                          value={discountValue === 0 ? '' : discountValue}
-                          onChange={e => setDiscountValue(Math.max(0, Number(e.target.value) || 0))}
-                          placeholder="0"
-                          className="custom-val-input"
-                        />
-                      </div>
-
-                      <input
-                        type="text"
-                        value={discountReason}
-                        onChange={e => setDiscountReason(e.target.value)}
-                        placeholder="Reason (e.g. Relative, Owner, Staff)"
-                        className="custom-reason-input"
-                      />
-                    </div>
-
-                    <div className="reason-chips-row">
-                      {DISCOUNT_REASONS.map(chip => (
-                        <button
-                          key={chip}
-                          type="button"
-                          onClick={() => {
-                            setDiscountReason(chip)
-                            if (chip === 'Relative / Owner' && discountValue === 0) {
-                              setDiscountType('percent')
-                              setDiscountValue(100)
-                            }
-                          }}
-                          className={`reason-chip ${discountReason === chip ? 'active' : ''}`}
-                        >
-                          {chip}
+              {/* Pinned Bottom Footer — Never overlaps items */}
+              <div className="cart-footer">
+                {/* Direct Discount & Relative Quick Presets */}
+                {canDiscount && (
+                  <div className="cart-discount-section">
+                    <div className="discount-header-row">
+                      <span className="discount-title">🏷️ Discount & Special</span>
+                      {discountPaise > 0 && (
+                        <button type="button" onClick={clearDiscount} className="btn-clear-discount">
+                          ✕ Reset
                         </button>
-                      ))}
+                      )}
                     </div>
+
+                    <div className="discount-presets-grid">
+                      <button
+                        type="button"
+                        onClick={toggleRelativeOrder}
+                        className={`btn-discount-relative ${isRelativeOrFree ? 'active' : ''}`}
+                        title="Mark 100% Free for Owner / Relative"
+                      >
+                        👑 Relative (₹0)
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => applyPercentPreset(10)}
+                        className={`btn-discount-preset ${!isRelativeOrFree && discountType === 'percent' && discountValue === 10 ? 'active' : ''}`}
+                      >
+                        10%
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => applyPercentPreset(20)}
+                        className={`btn-discount-preset ${!isRelativeOrFree && discountType === 'percent' && discountValue === 20 ? 'active' : ''}`}
+                      >
+                        20%
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => applyPercentPreset(50)}
+                        className={`btn-discount-preset ${!isRelativeOrFree && discountType === 'percent' && discountValue === 50 ? 'active' : ''}`}
+                      >
+                        50%
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowCustomDiscount(!showCustomDiscount)}
+                        className={`btn-discount-preset ${showCustomDiscount ? 'active-custom' : ''}`}
+                        title="Custom discount or notes"
+                      >
+                        ✏️ Other
+                      </button>
+                    </div>
+
+                    {/* Expandable Custom Discount / Notes Drawer */}
+                    {showCustomDiscount && (
+                      <div className="custom-discount-panel">
+                        <div className="custom-type-switch">
+                          <button
+                            type="button"
+                            onClick={() => { setDiscountType('percent'); setDiscountValue(0); }}
+                            className={`type-switch-btn ${discountType === 'percent' ? 'active' : ''}`}
+                          >
+                            % Percent
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setDiscountType('fixed'); setDiscountValue(0); }}
+                            className={`type-switch-btn ${discountType === 'fixed' ? 'active' : ''}`}
+                          >
+                            ₹ Flat Off
+                          </button>
+                        </div>
+
+                        <div className="custom-inputs-row">
+                          <div className="custom-val-wrapper">
+                            <span className="val-prefix">{discountType === 'percent' ? '%' : '₹'}</span>
+                            <input
+                              type="number"
+                              min="0"
+                              max={discountType === 'percent' ? 100 : subtotalRupees}
+                              value={discountValue || ''}
+                              onChange={e => setDiscountValue(Math.max(0, parseFloat(e.target.value) || 0))}
+                              placeholder="0"
+                              className="custom-val-input"
+                            />
+                          </div>
+                          <input
+                            type="text"
+                            value={discountReason}
+                            onChange={e => setDiscountReason(e.target.value)}
+                            placeholder="Reason (VIP, Staff, Promo...)"
+                            className="custom-reason-input"
+                          />
+                        </div>
+
+                        <div className="reason-chips-row">
+                          {DISCOUNT_REASONS.map(chip => (
+                            <button
+                              key={chip}
+                              type="button"
+                              onClick={() => setDiscountReason(chip)}
+                              className={`reason-chip ${discountReason === chip ? 'active' : ''}`}
+                            >
+                              {chip}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
-              )}
 
-              {/* Total & Checkout */}
-              <div className="cart-footer">
                 {/* Subtotal & Discount Breakdown Lines */}
                 {discountPaise > 0 && (
                   <div className="cart-breakdown">
@@ -1081,7 +1102,9 @@ export default function POSTerminal({
                       <span>
                         Discount {discountReason ? `(${discountReason})` : discountType === 'percent' ? `(${discountValue}%)` : `(-₹${discountValue})`}:
                       </span>
-                      <span className="discount-amount-text">-₹{discountRupees.toFixed(2)}</span>
+                      <span className="discount-amount-text">
+                        -₹{discountRupees.toFixed(2)}
+                      </span>
                     </div>
                   </div>
                 )}
@@ -1148,45 +1171,19 @@ export default function POSTerminal({
                 </div>
 
                 <div className="action-buttons-column">
-                  <div className="cart-print-grid">
-                    <button
-                      type="button"
-                      disabled={kotPrintStatus === 'printing'}
-                      onClick={() => handlePrintKOT()}
-                      className="btn-print-kot"
-                    >
-                      {kotPrintStatus === 'printing'
-                        ? '⏳ Printing KOT...'
-                        : kotPrintStatus === 'printed'
-                          ? '✅ KOT Printed!'
-                          : '🖨️ Print KOT'}
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={billPrintStatus === 'printing'}
-                      onClick={() => handlePrintBill()}
-                      className="btn-print-bill"
-                    >
-                      {billPrintStatus === 'printing'
-                        ? '⏳ Printing Bill...'
-                        : billPrintStatus === 'printed'
-                          ? '✅ Bill Printed!'
-                          : '🧾 Print Bill'}
-                    </button>
-                  </div>
-
                   <button
                     type="button"
                     disabled={cart.length === 0 || isPending}
                     onClick={handleCompleteBilling}
-                    className={`btn-complete-billing ${finalTotalRupees === 0 && cart.length > 0 ? 'btn-complete-zero' : ''}`}
+                    className={`btn-complete-billing ${billingStatus === 'success' ? 'btn-complete-success' : ''} ${finalTotalRupees === 0 && cart.length > 0 ? 'btn-complete-zero' : ''}`}
                   >
                     {isPending
-                      ? 'Processing...'
-                      : finalTotalRupees === 0 && cart.length > 0
-                        ? '👑 Settle Free Order (₹0.00)'
-                        : '💰 Complete Billing'}
+                      ? (printerSettings.enableKotPrint || printerSettings.enableReceiptPrint ? '⏳ Processing & Printing...' : 'Processing...')
+                      : billingStatus === 'success'
+                        ? '✅ Order Completed & Printed!'
+                        : finalTotalRupees === 0 && cart.length > 0
+                          ? '👑 Settle Free Order (₹0.00)'
+                          : '💰 Complete Billing'}
                   </button>
 
                   <button
@@ -1911,10 +1908,12 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
 
         /* POS Body */
         .pos-body {
-          flex: 1;
-          overflow-y: auto;
-          padding: 1rem 1.5rem;
-          max-width: 1400px;
+          flex: 1 1 0;
+          min-height: 0;
+          height: calc(100vh - 105px);
+          overflow: hidden;
+          padding: 0.75rem 1.25rem;
+          max-width: 1440px;
           margin: 0 auto;
           width: 100%;
         }
@@ -1922,17 +1921,23 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
         /* Order Screen Layout */
         .order-layout {
           display: grid;
-          grid-template-columns: 2fr 1fr;
-          gap: 1.25rem;
+          grid-template-columns: 1fr 390px;
+          gap: 1rem;
           height: 100%;
+          max-height: 100%;
+          min-height: 0;
+          overflow: hidden;
         }
         .order-left-panel {
           background: #ffffff;
           border: 1px solid #e2e8f0;
           border-radius: 0.75rem;
-          padding: 1.25rem;
+          padding: 1.15rem;
           display: flex;
           flex-direction: column;
+          height: 100%;
+          max-height: 100%;
+          min-height: 0;
           overflow-y: auto;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
         }
@@ -2112,140 +2117,222 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
           background: #ffffff;
           border: 1px solid #e2e8f0;
           border-radius: 0.75rem;
-          padding: 1.25rem;
+          padding: 0.9rem;
           display: flex;
           flex-direction: column;
           height: 100%;
+          max-height: 100%;
+          min-height: 0;
           overflow: hidden;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
         }
-        .cart-title {
-          font-size: 1.15rem;
-          font-weight: 700;
-          color: #0f172a;
-          margin-bottom: 0.85rem;
-          font-family: 'Outfit', sans-serif;
-        }
-        .order-no-box {
-          background: #fefce8;
-          border: 1.5px solid #fef08a;
-          border-radius: 0.5rem;
-          padding: 0.6rem 0.85rem;
-          margin-bottom: 1rem;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-        }
-        .order-no-header {
+        .cart-top-bar {
           display: flex;
           justify-content: space-between;
-          width: 100%;
-          font-size: 0.75rem;
-          color: #854d0e;
-          font-weight: 600;
-          margin-bottom: 0.2rem;
+          align-items: center;
+          margin-bottom: 0.5rem;
+          padding-bottom: 0.5rem;
+          border-bottom: 1.5px solid #f1f5f9;
+          flex-shrink: 0;
         }
-        .auto-tag {
-          background: #fef08a;
-          color: #854d0e;
-          padding: 0.1rem 0.35rem;
-          border-radius: 0.25rem;
-          font-size: 0.65rem;
+        .cart-top-left {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+        .cart-title {
+          font-size: 1.05rem;
           font-weight: 700;
-        }
-        .order-no-value {
-          font-size: 1.6rem;
-          font-weight: 800;
-          color: #b45309;
-          line-height: 1;
+          color: #0f172a;
+          margin: 0;
           font-family: 'Outfit', sans-serif;
         }
+        .order-no-pill {
+          display: flex;
+          align-items: center;
+          gap: 0.3rem;
+          background: #fefce8;
+          border: 1.5px solid #fef08a;
+          padding: 0.15rem 0.5rem;
+          border-radius: 0.4rem;
+        }
+        .order-no-label {
+          font-size: 0.7rem;
+          color: #854d0e;
+          font-weight: 600;
+        }
+        .order-no-num {
+          font-size: 1rem;
+          font-weight: 800;
+          color: #b45309;
+          font-family: 'Outfit', sans-serif;
+        }
+        .auto-tag {
+          background: #fde047;
+          color: #713f12;
+          padding: 0.05rem 0.3rem;
+          border-radius: 0.25rem;
+          font-size: 0.6rem;
+          font-weight: 800;
+        }
+        .btn-top-clear {
+          background: #fee2e2;
+          color: #b91c1c;
+          border: 1px solid #fca5a5;
+          border-radius: 0.35rem;
+          padding: 0.2rem 0.5rem;
+          font-size: 0.72rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: background 0.15s;
+        }
+        .btn-top-clear:hover {
+          background: #fecaca;
+        }
 
+        /* Cart Items List: Takes all vertical space, scrolls smoothly for 10-20+ items */
         .cart-items-container {
-          flex: 1;
-          overflow-y: auto;
           display: flex;
           flex-direction: column;
-          gap: 0.65rem;
-          margin-bottom: 1rem;
+          gap: 0.45rem;
+          margin-bottom: 0.5rem;
+          flex: 1 1 0;
+          min-height: 0;
+          overflow-y: auto;
+          overflow-x: hidden;
           padding-right: 0.25rem;
         }
+        .cart-items-container::-webkit-scrollbar {
+          width: 5px;
+        }
+        .cart-items-container::-webkit-scrollbar-track {
+          background: #f8fafc;
+          border-radius: 4px;
+        }
+        .cart-items-container::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 4px;
+        }
+        .cart-items-container::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
+        }
+
         .empty-cart-msg {
           text-align: center;
           color: #94a3b8;
-          font-size: 0.9rem;
-          padding: 3rem 1rem;
+          font-size: 0.85rem;
+          padding: 2.5rem 1rem;
+          background: #f8fafc;
+          border: 1.5px dashed #cbd5e1;
+          border-radius: 0.5rem;
+          margin: auto 0;
         }
         .cart-item-card {
           background: #f8fafc;
           border: 1px solid #e2e8f0;
           border-radius: 0.5rem;
-          padding: 0.75rem;
+          padding: 0.5rem 0.65rem;
+          transition: border-color 0.15s;
+          flex-shrink: 0;
+        }
+        .cart-item-card:hover {
+          border-color: #cbd5e1;
         }
         .cart-item-row-top {
           display: flex;
           justify-content: space-between;
-          align-items: center;
+          align-items: flex-start;
           margin-bottom: 0.25rem;
+          gap: 0.4rem;
         }
         .cart-item-name {
           font-weight: 700;
-          font-size: 0.9rem;
+          font-size: 0.85rem;
           color: #0f172a;
+          line-height: 1.25;
         }
         .cart-item-delete {
           background: none;
           border: none;
-          color: #ef4444;
-          font-size: 1rem;
+          color: #94a3b8;
+          font-size: 0.9rem;
           cursor: pointer;
-          padding: 0.2rem;
-          transition: color 0.15s;
+          padding: 0.1rem 0.2rem;
+          border-radius: 0.25rem;
+          line-height: 1;
+          transition: all 0.15s;
         }
-        .cart-item-delete:hover { color: #dc2626; }
+        .cart-item-delete:hover {
+          color: #dc2626;
+          background: #fee2e2;
+        }
+        .cart-item-row-bottom {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
         .cart-item-calc {
-          font-size: 0.78rem;
+          font-size: 0.75rem;
           color: #64748b;
-          margin-bottom: 0.5rem;
           font-weight: 500;
+        }
+        .cart-item-subtotal {
+          color: #0f172a;
+          font-weight: 700;
         }
         .cart-stepper-row {
           display: flex;
           align-items: center;
-          gap: 0.5rem;
+          gap: 0.3rem;
         }
         .stepper-btn {
-          width: 26px;
-          height: 26px;
+          width: 22px;
+          height: 22px;
           background: #ffffff;
           border: 1px solid #cbd5e1;
-          border-radius: 0.35rem;
+          border-radius: 0.3rem;
           color: #0f172a;
-          font-weight: 700;
-          font-size: 0.9rem;
+          font-weight: 800;
+          font-size: 0.8rem;
           cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
           transition: background 0.15s;
         }
         .stepper-btn:hover { background: #f1f5f9; }
         .stepper-val {
-          font-size: 0.9rem;
+          font-size: 0.85rem;
           font-weight: 700;
-          min-width: 20px;
+          min-width: 16px;
           text-align: center;
           color: #0f172a;
         }
+        .btn-complete-success {
+          background: #059669 !important;
+          box-shadow: 0 4px 12px rgba(5, 150, 105, 0.4) !important;
+        }
 
-        /* Discount Box */
-        .cart-discount-box {
-          background: #f8fafc;
-          border: 1px solid #e2e8f0;
-          border-radius: 0.5rem;
-          padding: 0.65rem 0.75rem;
+        /* Pinned Footer at Bottom — Never overlaps items */
+        .cart-footer {
+          border-top: 1.5px solid #f1f5f9;
+          padding-top: 0.5rem;
           display: flex;
           flex-direction: column;
-          gap: 0.5rem;
-          margin-bottom: 0.25rem;
+          gap: 0.45rem;
+          flex-shrink: 0;
+          background: #ffffff;
+        }
+
+        /* Discount & Special Section */
+        .cart-discount-section {
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          border-radius: 0.45rem;
+          padding: 0.4rem 0.55rem;
+          display: flex;
+          flex-direction: column;
+          gap: 0.3rem;
         }
         .discount-header-row {
           display: flex;
@@ -2253,35 +2340,35 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
           align-items: center;
         }
         .discount-title {
-          font-size: 0.78rem;
+          font-size: 0.72rem;
           font-weight: 700;
-          color: #334155;
+          color: #475569;
         }
         .btn-clear-discount {
           background: none;
           border: none;
           color: #dc2626;
-          font-size: 0.72rem;
-          font-weight: 600;
+          font-size: 0.7rem;
+          font-weight: 700;
           cursor: pointer;
-          padding: 0.1rem 0.3rem;
-          border-radius: 0.25rem;
+          padding: 0.05rem 0.25rem;
+          border-radius: 0.2rem;
         }
         .btn-clear-discount:hover {
           background: #fee2e2;
         }
         .discount-presets-grid {
           display: grid;
-          grid-template-columns: 1.4fr 1fr 1fr 1fr 1fr;
-          gap: 0.35rem;
+          grid-template-columns: 1.35fr 1fr 1fr 1fr 1fr;
+          gap: 0.25rem;
         }
         .btn-discount-relative {
-          padding: 0.35rem 0.4rem;
+          padding: 0.3rem 0.25rem;
           background: #fefce8;
           border: 1.5px solid #fde047;
           border-radius: 0.35rem;
           color: #854d0e;
-          font-size: 0.72rem;
+          font-size: 0.68rem;
           font-weight: 800;
           cursor: pointer;
           transition: all 0.15s;
@@ -2291,7 +2378,6 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
         .btn-discount-relative:hover {
           background: #fef08a;
           border-color: #eab308;
-          transform: translateY(-1px);
         }
         .btn-discount-relative.active {
           background: #16a34a;
@@ -2300,12 +2386,12 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
           box-shadow: 0 2px 4px rgba(22, 163, 74, 0.3);
         }
         .btn-discount-preset {
-          padding: 0.35rem 0.25rem;
+          padding: 0.3rem 0.2rem;
           background: #ffffff;
           border: 1px solid #cbd5e1;
           border-radius: 0.35rem;
           color: #334155;
-          font-size: 0.75rem;
+          font-size: 0.72rem;
           font-weight: 700;
           cursor: pointer;
           transition: all 0.15s;
@@ -2330,25 +2416,25 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
         .custom-discount-panel {
           background: #ffffff;
           border: 1px solid #cbd5e1;
-          border-radius: 0.45rem;
-          padding: 0.6rem;
+          border-radius: 0.4rem;
+          padding: 0.45rem;
           display: flex;
           flex-direction: column;
-          gap: 0.45rem;
-          margin-top: 0.25rem;
+          gap: 0.35rem;
+          margin-top: 0.2rem;
         }
         .custom-type-switch {
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 0.3rem;
+          gap: 0.25rem;
         }
         .type-switch-btn {
-          padding: 0.25rem;
+          padding: 0.2rem;
           background: #f8fafc;
           border: 1px solid #cbd5e1;
-          border-radius: 0.3rem;
+          border-radius: 0.25rem;
           color: #475569;
-          font-size: 0.72rem;
+          font-size: 0.7rem;
           font-weight: 600;
           cursor: pointer;
         }
@@ -2360,29 +2446,29 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
         }
         .custom-inputs-row {
           display: flex;
-          gap: 0.4rem;
+          gap: 0.35rem;
         }
         .custom-val-wrapper {
           position: relative;
-          width: 85px;
+          width: 80px;
           flex-shrink: 0;
         }
         .val-prefix {
           position: absolute;
-          left: 0.45rem;
+          left: 0.4rem;
           top: 50%;
           transform: translateY(-50%);
           color: #64748b;
-          font-size: 0.75rem;
+          font-size: 0.72rem;
           font-weight: 700;
           pointer-events: none;
         }
         .custom-val-input {
           width: 100%;
-          padding: 0.35rem 0.4rem 0.35rem 1.25rem;
+          padding: 0.3rem 0.35rem 0.3rem 1.15rem;
           border: 1px solid #cbd5e1;
           border-radius: 0.3rem;
-          font-size: 0.8rem;
+          font-size: 0.78rem;
           font-weight: 700;
           color: #0f172a;
           background: #ffffff;
@@ -2393,10 +2479,10 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
         }
         .custom-reason-input {
           flex: 1;
-          padding: 0.35rem 0.5rem;
+          padding: 0.3rem 0.45rem;
           border: 1px solid #cbd5e1;
           border-radius: 0.3rem;
-          font-size: 0.78rem;
+          font-size: 0.75rem;
           color: #0f172a;
           background: #ffffff;
           outline: none;
@@ -2407,14 +2493,14 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
         .reason-chips-row {
           display: flex;
           flex-wrap: wrap;
-          gap: 0.25rem;
+          gap: 0.2rem;
         }
         .reason-chip {
-          padding: 0.15rem 0.45rem;
+          padding: 0.12rem 0.4rem;
           background: #f1f5f9;
           border: 1px solid #e2e8f0;
           border-radius: 0.25rem;
-          font-size: 0.68rem;
+          font-size: 0.65rem;
           color: #475569;
           font-weight: 600;
           cursor: pointer;
@@ -2434,11 +2520,11 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
         .cart-breakdown {
           display: flex;
           flex-direction: column;
-          gap: 0.2rem;
-          font-size: 0.85rem;
+          gap: 0.15rem;
+          font-size: 0.8rem;
           color: #64748b;
           border-bottom: 1px dashed #cbd5e1;
-          padding-bottom: 0.5rem;
+          padding-bottom: 0.35rem;
         }
         .breakdown-row {
           display: flex;
@@ -2463,24 +2549,24 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
         .relative-order-banner {
           display: flex;
           align-items: center;
-          gap: 0.5rem;
+          gap: 0.4rem;
           background: #f0fdf4;
           border: 1.5px solid #bbf7d0;
-          border-radius: 0.45rem;
-          padding: 0.5rem 0.65rem;
+          border-radius: 0.4rem;
+          padding: 0.4rem 0.55rem;
           color: #15803d;
         }
         .banner-icon {
-          font-size: 1.25rem;
+          font-size: 1.15rem;
         }
         .banner-text strong {
           display: block;
-          font-size: 0.82rem;
+          font-size: 0.78rem;
           font-weight: 800;
           color: #166534;
         }
         .banner-text p {
-          font-size: 0.72rem;
+          font-size: 0.7rem;
           color: #15803d;
           margin: 0;
         }
@@ -2489,24 +2575,17 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
           box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35) !important;
         }
 
-        .cart-footer {
-          border-top: 1px solid #e2e8f0;
-          padding-top: 0.85rem;
-          display: flex;
-          flex-direction: column;
-          gap: 0.75rem;
-        }
         .cart-total-row {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          font-size: 1.15rem;
+          font-size: 1.1rem;
           font-weight: 700;
           color: #0f172a;
         }
         .cart-total-value {
           color: #b45309;
-          font-size: 1.4rem;
+          font-size: 1.35rem;
           font-weight: 800;
           font-family: 'Outfit', sans-serif;
         }
