@@ -1,75 +1,113 @@
 'use server'
 
-import { writeFileSync, unlinkSync } from 'fs'
-import { join } from 'path'
-import { tmpdir } from 'os'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
+import {
+  getThermalPrinter,
+  buildReceipt,
+  buildKOT,
+  buildTest,
+  sendEscPosToPrinter,
+  type ThermalOrderData,
+} from '@/utils/thermal-printer'
 
 const execFileAsync = promisify(execFile)
 
-export interface PrintTicketPayload {
-  orderNo: number
-  time: string
-  cashier: string
-  notes?: string
-  items: { name: string; qty: number }[]
+export interface PrintJobParams {
+  type: 'RECEIPT' | 'KOT' | 'TEST'
+  data?: ThermalOrderData
   printerName?: string
+  paperWidth?: number
+  enableKotPrint?: boolean
+  enableReceiptPrint?: boolean
 }
 
-export async function printDirectToThermalPrinter(ticket: PrintTicketPayload) {
-  const WIDTH = 32
-  const center = (text: string) => {
-    const pad = Math.max(0, Math.floor((WIDTH - text.length) / 2))
-    return ' '.repeat(pad) + text
-  }
-  const eq = '='.repeat(WIDTH)
-  const dash = '-'.repeat(WIDTH)
+export async function printJobAction(params: PrintJobParams) {
+  const {
+    type,
+    data,
+    printerName = 'POSIO QX300',
+    paperWidth = 48,
+    enableKotPrint = true,
+    enableReceiptPrint = true,
+  } = params
 
-  const lines: string[] = []
-  lines.push('')
-  lines.push(center('** KITCHEN ORDER TICKET **'))
-  lines.push(eq)
-  lines.push(center(`ORDER #${ticket.orderNo}`))
-  lines.push(eq)
-  lines.push(`Time: ${ticket.time}`)
-  lines.push(`By: ${ticket.cashier}`)
-  lines.push(dash)
-  lines.push('ITEMS:')
-  for (const item of ticket.items) {
-    const name = `  ${item.name || 'Item'}`
-    const qty = `x${item.qty}`
-    const pad = WIDTH - name.length - qty.length
-    lines.push(name + (pad > 0 ? ' '.repeat(pad) : ' ') + qty)
+  if (type === 'RECEIPT' && enableReceiptPrint === false) {
+    return { success: true, message: 'Receipt print disabled in settings' }
   }
-  if (ticket.notes) {
-    lines.push(dash)
-    lines.push(`Note: ${ticket.notes}`)
+  if (type === 'KOT' && enableKotPrint === false) {
+    return { success: true, message: 'KOT print disabled in settings' }
   }
-  lines.push(eq)
-  lines.push(center('** PLEASE PREPARE **'))
-  lines.push(eq)
-  lines.push('')
-  lines.push('')
-  lines.push('')
-  lines.push('')
 
-  const content = lines.join('\r\n')
-  const tmpFile = join(tmpdir(), `kot_${Date.now()}_${Math.random().toString(36).slice(2)}.txt`)
-  const targetPrinter = ticket.printerName || 'POSIO QX300'
+  const printer = getThermalPrinter(paperWidth)
 
   try {
-    writeFileSync(tmpFile, content, 'utf8')
-    const psScript = `Get-Content -LiteralPath '${tmpFile.replace(/'/g, "''")}' | Out-Printer -Name '${targetPrinter.replace(/'/g, "''")}'`
-    const b64 = Buffer.from(psScript, 'utf16le').toString('base64')
-    await execFileAsync('powershell.exe', ['-NoProfile', '-EncodedCommand', b64])
-    return { success: true }
+    if (type === 'RECEIPT') {
+      if (!data) throw new Error('No order data provided for RECEIPT')
+      buildReceipt(printer, data)
+    } else if (type === 'KOT') {
+      if (!data) throw new Error('No order data provided for KOT')
+      buildKOT(printer, data)
+    } else if (type === 'TEST') {
+      buildTest(printer, printerName, paperWidth)
+    } else {
+      throw new Error(`Unknown print type: ${type}`)
+    }
+
+    await sendEscPosToPrinter(printer, printerName)
+    return { success: true, message: `Sent ${type} to ${printerName}` }
   } catch (err: any) {
-    console.error('Direct print failed:', err)
-    return { success: false, error: err.message || 'Direct print error' }
-  } finally {
-    try {
-      unlinkSync(tmpFile)
-    } catch {}
+    console.error('Print job failed:', err)
+    return { success: false, error: err.message || 'Print error' }
   }
 }
+
+export async function getDiscoveredPrintersAction() {
+  try {
+    const { stdout } = await execFileAsync('powershell.exe', [
+      '-NoProfile',
+      '-Command',
+      'Get-Printer | Select-Object Name | ConvertTo-Json',
+    ])
+
+    const parsed = JSON.parse(stdout || '[]')
+    const list = (Array.isArray(parsed) ? parsed : [parsed])
+      .map((p: any) => p?.Name)
+      .filter(Boolean) as string[]
+
+    if (!list.includes('POSIO QX300')) {
+      list.unshift('POSIO QX300')
+    }
+    return { success: true, printers: list }
+  } catch (err) {
+    console.warn('Could not auto-detect printers, returning default:', err)
+    return { success: true, printers: ['POSIO QX300'] }
+  }
+}
+
+export async function printDirectToThermalPrinter(payload: any) {
+  const isKot = payload.ticketType === 'kot'
+  return printJobAction({
+    type: isKot ? 'KOT' : 'RECEIPT',
+    printerName: payload.printerName || 'POSIO QX300',
+    paperWidth: payload.paperWidth || 48,
+    data: {
+      orderNumber: payload.orderNo,
+      createdAt: payload.createdAt || new Date().toISOString(),
+      restaurantName: payload.headerText || payload.restaurantName || 'CHINESE NAWAB',
+      branchName: payload.tagline || payload.branchName,
+      cashierName: payload.cashier,
+      subtotal: payload.subtotal,
+      discount: payload.discount,
+      total: payload.total,
+      paymentMode: payload.paymentMode,
+      items: (payload.items || []).map((i: any) => ({
+        name: i.name,
+        quantity: i.qty || i.quantity || 1,
+        price: i.unitPrice ?? i.price,
+        lineTotal: i.lineTotal,
+      })),
+    },
+  })
+}
+

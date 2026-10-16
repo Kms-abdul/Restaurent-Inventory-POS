@@ -5,7 +5,9 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { CartItem } from '@/types/database'
 import { createPOSOrder, createKOTPrintJob, listOrders, updateFulfillmentStatus, voidOrder } from '@/app/actions/orders'
-import { printDirectToThermalPrinter } from '@/app/actions/print-direct'
+import { printJobAction, getDiscoveredPrintersAction, printDirectToThermalPrinter } from '@/app/actions/print-direct'
+import type { ThermalOrderData } from '@/utils/thermal-printer'
+import { formatTicketText, type PrintTicketPayload } from '@/utils/receipt-formatter' 
 
 interface Category {
   id: string
@@ -133,6 +135,80 @@ export default function POSTerminal({
   const [pendingAction, setPendingAction] = useState<string | null>(null)
   const [isDirectPrinting, setIsDirectPrinting] = useState<boolean>(false)
   const [directPrintStatus, setDirectPrintStatus] = useState<string | null>(null)
+  const [kotPrintStatus, setKotPrintStatus] = useState<string | null>(null)
+  const [billPrintStatus, setBillPrintStatus] = useState<string | null>(null)
+  const [testPrintStatus, setTestPrintStatus] = useState<string | null>(null)
+  const [availablePrinters, setAvailablePrinters] = useState<string[]>(['POSIO QX300'])
+  const [isLoadingPrinters, setIsLoadingPrinters] = useState<boolean>(false)
+  const [printerSaveSuccess, setPrinterSaveSuccess] = useState<boolean>(false)
+
+  // Printer Configuration Settings (Saved in LocalStorage)
+  const [printerSettings, setPrinterSettings] = useState({
+    printerName: 'POSIO QX300',
+    paperWidth: 48,
+    enableKotPrint: true,
+    enableReceiptPrint: true,
+    ticketType: 'receipt' as 'receipt' | 'kot',
+    showPrices: true,
+    headerText: restaurantName || 'CHINESE NAWAB',
+    tagline: branchName,
+    footerText: '** THANK YOU VISIT AGAIN **',
+  })
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('pos_printer_settings')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        setPrinterSettings(prev => ({
+          ...prev,
+          ...parsed,
+          printerName: parsed.printerName || 'POSIO QX300',
+          paperWidth: Number(parsed.paperWidth) || 48,
+          enableKotPrint: parsed.enableKotPrint !== false,
+          enableReceiptPrint: parsed.enableReceiptPrint !== false,
+        }))
+      }
+    } catch {}
+  }, [])
+
+  const refreshPrinters = useCallback(async () => {
+    setIsLoadingPrinters(true)
+    try {
+      const res = await getDiscoveredPrintersAction()
+      if (res.success && res.printers && res.printers.length > 0) {
+        setAvailablePrinters(res.printers)
+      }
+    } catch (err) {
+      console.warn('Failed to discover printers:', err)
+    } finally {
+      setIsLoadingPrinters(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    refreshPrinters()
+  }, [refreshPrinters])
+
+  const handleSavePrinterSettings = () => {
+    try {
+      localStorage.setItem('pos_printer_settings', JSON.stringify(printerSettings))
+      setPrinterSaveSuccess(true)
+      setTimeout(() => setPrinterSaveSuccess(false), 2500)
+    } catch (e) {
+      console.error('Failed to save printer settings:', e)
+    }
+  }
+
+  const updatePrinterSettings = (updates: Partial<typeof printerSettings>) => {
+    setPrinterSettings(prev => {
+      const next = { ...prev, ...updates }
+      try {
+        localStorage.setItem('pos_printer_settings', JSON.stringify(next))
+      } catch {}
+      return next
+    })
+  }
 
   // Discount & Special Order State
   const [discountType, setDiscountType] = useState<'percent' | 'fixed'>('percent')
@@ -352,30 +428,44 @@ export default function POSTerminal({
         clearDiscount()
         setOrderNotes('')
 
-        // Create a KOT print job for the local Print Agent (silent thermal print)
-        void createKOTPrintJob({
-          branchId,
-          orderId:        result.order_id,
-          orderNo:        result.order_no,
-          restaurantName,
-          branchName,
+        // Auto-print directly to local Windows thermal printer based on print preferences
+        const printData: ThermalOrderData = {
+          orderNumber: result.order_no,
+          createdAt: new Date().toISOString(),
+          restaurantName: printerSettings.headerText || restaurantName || 'CHINESE NAWAB',
+          branchName: printerSettings.tagline || branchName,
           cashierName,
-          notes:          combinedNotes || undefined,
+          subtotal: subtotalRupees,
+          discount: discountRupees,
+          total: finalTotalRupees,
+          paymentMode: finalTotalRupees === 0 ? 'Complimentary' : paymentMode,
           items: createdOrder.items.map(i => ({
             name: i.name,
-            qty:  i.qty,
+            quantity: i.qty,
+            price: i.unitPrice ? i.unitPrice / 100 : undefined,
+            lineTotal: i.lineTotal ? i.lineTotal / 100 : undefined,
           })),
-        })
+        }
 
-        // Auto-print directly to local Windows thermal printer if enabled
-        if (autoPrintKOT) {
-          void printDirectToThermalPrinter({
-            orderNo: result.order_no,
-            time: orderTime,
-            cashier: cashierName,
-            notes: combinedNotes || undefined,
-            items: createdOrder.items.map(i => ({ name: i.name, qty: i.qty })),
+        if (printerSettings.enableKotPrint) {
+          void printJobAction({
+            type: 'KOT',
+            data: printData,
+            printerName: printerSettings.printerName || 'POSIO QX300',
+            paperWidth: printerSettings.paperWidth || 48,
           })
+        }
+
+        if (printerSettings.enableReceiptPrint) {
+          const delayMs = printerSettings.enableKotPrint ? 500 : 0
+          setTimeout(() => {
+            void printJobAction({
+              type: 'RECEIPT',
+              data: printData,
+              printerName: printerSettings.printerName || 'POSIO QX300',
+              paperWidth: printerSettings.paperWidth || 48,
+            })
+          }, delayMs)
         }
 
         // Refresh order list in background — UI already updated above
@@ -428,72 +518,146 @@ export default function POSTerminal({
     return null
   }, [ticketToPrint, cart, nextOrderNo, cashierName, orderNotes, discountPaise, discountReason, isRelativeOrFree, discountValue, lastOrder])
 
-  // Print trigger handler — prints directly to POSIO QX300 without browser dialogs
-  const handlePrintReceipt = async (overrideOrder?: {
-    order_no: number
-    time: string
-    cashier: string
-    tableNumber?: string
-    notes?: string
-    items: { name: string; qty: number }[]
-  }) => {
-    let target = overrideOrder
-    if (!target) {
-      if (cart.length > 0) {
-        let combinedNotes = orderNotes.trim()
-        if (discountPaise > 0) {
-          const discTag = discountReason.trim() || (isRelativeOrFree ? 'Relative (Free)' : `${discountValue}% Off`)
-          combinedNotes = combinedNotes ? `${combinedNotes} [${discTag}]` : `[${discTag}]`
-        }
-        target = {
-          order_no: nextOrderNo,
-          time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase(),
-          cashier: cashierName,
-          notes: combinedNotes || undefined,
-          items: cart.map(i => ({ name: i.name, qty: i.qty })),
-        }
-      } else if (lastOrder && lastOrder.items && lastOrder.items.length > 0) {
-        target = {
-          order_no: lastOrder.order_no,
-          time: lastOrder.time || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase(),
-          cashier: cashierName,
-          notes: lastOrder.notes || undefined,
-          items: lastOrder.items.map(i => ({ name: i.name, qty: i.qty })),
-        }
+  const getThermalDataFromOrder = (override?: any): ThermalOrderData | null => {
+    if (override && override.items && override.items.length > 0) {
+      return {
+        orderNumber: override.order_no,
+        createdAt: new Date().toISOString(),
+        restaurantName: printerSettings.headerText || restaurantName || 'CHINESE NAWAB',
+        branchName: printerSettings.tagline || branchName,
+        cashierName: override.cashier || cashierName,
+        subtotal: subtotalRupees,
+        discount: discountRupees,
+        total: finalTotalRupees,
+        paymentMode: paymentMode,
+        items: override.items.map((i: any) => ({
+          name: i.name,
+          quantity: i.qty || i.quantity || 1,
+          price: i.unitPrice ? i.unitPrice / 100 : undefined,
+          lineTotal: i.lineTotal ? i.lineTotal / 100 : undefined,
+        })),
       }
     }
 
-    if (!target || target.items.length === 0) {
-      alert('No items to print. Please add items to the order or settle a bill first.')
+    if (cart.length > 0) {
+      return {
+        orderNumber: nextOrderNo,
+        createdAt: new Date().toISOString(),
+        restaurantName: printerSettings.headerText || restaurantName || 'CHINESE NAWAB',
+        branchName: printerSettings.tagline || branchName,
+        cashierName,
+        subtotal: subtotalRupees,
+        discount: discountRupees,
+        total: finalTotalRupees,
+        paymentMode: paymentMode,
+        items: cart.map(i => ({
+          name: i.name,
+          quantity: i.qty,
+          price: i.unitPrice ? i.unitPrice / 100 : undefined,
+          lineTotal: i.lineTotal ? i.lineTotal / 100 : undefined,
+        })),
+      }
+    }
+
+    if (lastOrder && lastOrder.items && lastOrder.items.length > 0) {
+      return {
+        orderNumber: lastOrder.order_no,
+        createdAt: new Date().toISOString(),
+        restaurantName: printerSettings.headerText || restaurantName || 'CHINESE NAWAB',
+        branchName: printerSettings.tagline || branchName,
+        cashierName,
+        subtotal: lastOrder.subtotal,
+        discount: lastOrder.discount,
+        total: lastOrder.total,
+        paymentMode: lastOrder.payment_mode,
+        items: lastOrder.items.map(i => ({
+          name: i.name,
+          quantity: i.qty,
+          price: i.unitPrice ? i.unitPrice / 100 : undefined,
+          lineTotal: i.lineTotal ? i.lineTotal / 100 : undefined,
+        })),
+      }
+    }
+
+    return null
+  }
+
+  const handlePrintKOT = async (override?: any) => {
+    const data = getThermalDataFromOrder(override)
+    if (!data || data.items.length === 0) {
+      alert('No items to print KOT. Please add items to the order first.')
       return
     }
 
-    setTicketToPrint(target)
-    setIsDirectPrinting(true)
-
-    // Dispatch directly to Windows thermal printer
+    setKotPrintStatus('printing')
     try {
-      const res = await printDirectToThermalPrinter({
-        orderNo: target.order_no,
-        time: target.time,
-        cashier: target.cashier,
-        notes: target.notes,
-        items: target.items,
+      const res = await printJobAction({
+        type: 'KOT',
+        data,
+        printerName: printerSettings.printerName || 'POSIO QX300',
+        paperWidth: printerSettings.paperWidth || 48,
       })
-
       if (res.success) {
-        setDirectPrintStatus('printed')
-        setTimeout(() => setDirectPrintStatus(null), 3000)
-        return // Direct print succeeded! No browser dialog needed!
+        setKotPrintStatus('printed')
+        setTimeout(() => setKotPrintStatus(null), 2500)
+      } else {
+        alert('KOT print failed: ' + (res.error || 'Unknown error'))
+        setKotPrintStatus(null)
       }
+    } catch (e: any) {
+      alert('KOT print failed: ' + e.message)
+      setKotPrintStatus(null)
+    }
+  }
 
-      console.warn('Direct print failed, falling back to browser print:', res.error)
-      window.print()
-    } catch (err) {
-      console.error('Error during direct print, fallback to browser print:', err)
-      window.print()
-    } finally {
-      setIsDirectPrinting(false)
+  const handlePrintBill = async (override?: any) => {
+    const data = getThermalDataFromOrder(override)
+    if (!data || data.items.length === 0) {
+      alert('No items to print Bill. Please add items to the order first.')
+      return
+    }
+
+    setBillPrintStatus('printing')
+    try {
+      const res = await printJobAction({
+        type: 'RECEIPT',
+        data,
+        printerName: printerSettings.printerName || 'POSIO QX300',
+        paperWidth: printerSettings.paperWidth || 48,
+      })
+      if (res.success) {
+        setBillPrintStatus('printed')
+        setTimeout(() => setBillPrintStatus(null), 2500)
+      } else {
+        alert('Bill print failed: ' + (res.error || 'Unknown error'))
+        setBillPrintStatus(null)
+      }
+    } catch (e: any) {
+      alert('Bill print failed: ' + e.message)
+      setBillPrintStatus(null)
+    }
+  }
+
+  const handlePrintReceipt = (override?: any) => handlePrintBill(override)
+
+  const handleSendTestPrint = async () => {
+    setTestPrintStatus('printing')
+    try {
+      const res = await printJobAction({
+        type: 'TEST',
+        printerName: printerSettings.printerName || 'POSIO QX300',
+        paperWidth: printerSettings.paperWidth || 48,
+      })
+      if (res.success) {
+        setTestPrintStatus('printed')
+        setTimeout(() => setTestPrintStatus(null), 2500)
+      } else {
+        alert('Test print failed: ' + (res.error || 'Unknown error'))
+        setTestPrintStatus(null)
+      }
+    } catch (e: any) {
+      alert('Test print failed: ' + e.message)
+      setTestPrintStatus(null)
     }
   }
 
@@ -984,19 +1148,33 @@ export default function POSTerminal({
                 </div>
 
                 <div className="action-buttons-column">
-                  <button
-                    type="button"
-                    disabled={isDirectPrinting}
-                    onClick={() => handlePrintReceipt()}
-                    className="btn-print-receipt"
-                    style={directPrintStatus === 'printed' ? { background: '#dcfce7', color: '#166534', borderColor: '#86efac' } : undefined}
-                  >
-                    {isDirectPrinting
-                      ? '⏳ Printing to QX300...'
-                      : directPrintStatus === 'printed'
-                        ? '✅ Printed to QX300!'
-                        : '🖨️ Print Receipt'}
-                  </button>
+                  <div className="cart-print-grid">
+                    <button
+                      type="button"
+                      disabled={kotPrintStatus === 'printing'}
+                      onClick={() => handlePrintKOT()}
+                      className="btn-print-kot"
+                    >
+                      {kotPrintStatus === 'printing'
+                        ? '⏳ Printing KOT...'
+                        : kotPrintStatus === 'printed'
+                          ? '✅ KOT Printed!'
+                          : '🖨️ Print KOT'}
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={billPrintStatus === 'printing'}
+                      onClick={() => handlePrintBill()}
+                      className="btn-print-bill"
+                    >
+                      {billPrintStatus === 'printing'
+                        ? '⏳ Printing Bill...'
+                        : billPrintStatus === 'printed'
+                          ? '✅ Bill Printed!'
+                          : '🧾 Print Bill'}
+                    </button>
+                  </div>
 
                   <button
                     type="button"
@@ -1385,14 +1563,142 @@ export default function POSTerminal({
           </div>
         )}
 
-        {/* TAB 7: PRINTER SHORTCUT */}
+        {/* TAB 7: PRINTER CONFIGURATION */}
         {activeTab === 'printer' && (
-          <div className="shortcut-tab-layout">
-            <div className="shortcut-card">
-              <h2>⚙️ Printer Configuration</h2>
-              <p>Configure local Windows thermal receipt printers and kitchen KOT printers for {branchName}.</p>
-              <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-                <Link href={`/restaurant/branches/${branchId}/printers`} className="btn-primary">Configure Printers →</Link>
+          <div className="printer-config-screen">
+            <div className="printer-config-layout">
+              {/* Left Column: Printer Configuration Form */}
+              <div className="config-card-dark">
+                <div className="config-card-header">
+                  <span className="card-header-icon">⚙️</span>
+                  <h2>Printer Configuration</h2>
+                </div>
+
+                <div className="configured-badge">
+                  <span>✅</span>
+                  <span>Configured: {printerSettings.printerName || 'POSIO QX300'}</span>
+                </div>
+
+                <div className="config-group">
+                  <label className="config-label">Receipt Printer</label>
+                  <select
+                    value={printerSettings.printerName}
+                    onChange={e => updatePrinterSettings({ printerName: e.target.value })}
+                    className="config-select"
+                  >
+                    {availablePrinters.map(p => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="config-group">
+                  <label className="config-label">Paper Width (characters per line)</label>
+                  <select
+                    value={printerSettings.paperWidth}
+                    onChange={e => updatePrinterSettings({ paperWidth: Number(e.target.value) })}
+                    className="config-select"
+                  >
+                    <option value={48}>48 chars — 80mm standard ✓ recommended</option>
+                    <option value={42}>42 chars</option>
+                    <option value={32}>32 chars</option>
+                  </select>
+                  <span className="config-hint">
+                    For your {printerSettings.printerName || 'QX300'} 80mm printer, 48 chars is the recommended setting.
+                  </span>
+                </div>
+
+                <div className="config-group">
+                  <div className="preferences-title">Print Preferences</div>
+                  <div className="preference-checkbox-row">
+                    <label className="checkbox-item">
+                      <input
+                        type="checkbox"
+                        checked={printerSettings.enableKotPrint}
+                        onChange={e => updatePrinterSettings({ enableKotPrint: e.target.checked })}
+                      />
+                      <span>Enable KOT Print</span>
+                    </label>
+
+                    <label className="checkbox-item">
+                      <input
+                        type="checkbox"
+                        checked={printerSettings.enableReceiptPrint}
+                        onChange={e => updatePrinterSettings({ enableReceiptPrint: e.target.checked })}
+                      />
+                      <span>Enable Customer Bill Receipt Print</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="config-buttons-row">
+                  <button
+                    type="button"
+                    onClick={handleSavePrinterSettings}
+                    className="btn-save-printer"
+                  >
+                    {printerSaveSuccess ? '✅ Saved!' : '💾 Save Printer'}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isLoadingPrinters}
+                    onClick={refreshPrinters}
+                    className="btn-refresh-printers"
+                  >
+                    🔄 {isLoadingPrinters ? 'Detecting...' : 'Refresh'}
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={testPrintStatus === 'printing'}
+                  onClick={handleSendTestPrint}
+                  className="btn-send-test"
+                >
+                  {testPrintStatus === 'printing'
+                    ? '⏳ Sending Test Print...'
+                    : testPrintStatus === 'printed'
+                      ? '✅ Test Print Sent to QX300!'
+                      : '🖨️ Send Test Print'}
+                </button>
+              </div>
+
+              {/* Right Column: Setup Guide and Test Print Preview */}
+              <div className="config-sidebar-column">
+                <div className="setup-guide-card">
+                  <div className="config-card-header">
+                    <span className="card-header-icon">📜</span>
+                    <h2>How to set up</h2>
+                  </div>
+                  <ol className="setup-ol">
+                    <li>Make sure your QX300 is connected via USB and powered on.</li>
+                    <li>Click <strong>Refresh</strong> to detect all installed Windows printers.</li>
+                    <li>Select <strong>{printerSettings.printerName || 'POSIO QX300'}</strong> from the dropdown.</li>
+                    <li>Set paper width to <strong>48 chars</strong> for standard 80mm roll.</li>
+                    <li>Click <strong>Save Printer</strong>. This setting is remembered permanently.</li>
+                    <li>Click <strong>Send Test Print</strong> to confirm the printer is working.</li>
+                  </ol>
+                  <p className="setup-footer-note">
+                    Once saved, every receipt and KOT will print directly to this printer — no browser print dialog.
+                  </p>
+                </div>
+
+                <div className="test-preview-card">
+                  <div className="config-card-header">
+                    <span className="card-header-icon">🖨️</span>
+                    <h2>Test Print Preview</h2>
+                  </div>
+                  <pre className="test-preview-box">{`        ** PRINT TEST **
+       Chinese Nawab POS
+
+Printer: ${printerSettings.printerName || 'POSIO QX300'}
+Width: ${printerSettings.paperWidth} chars
+Time: ${new Date().toLocaleTimeString('en-IN')}
+
+------------------------------------------------
+           Printer working correctly!`}</pre>
+                </div>
               </div>
             </div>
           </div>
@@ -2248,20 +2554,56 @@ export default function POSTerminal({
           flex-direction: column;
           gap: 0.45rem;
         }
-        .btn-print-receipt {
-          padding: 0.6rem;
-          background: #f1f5f9;
-          color: #334155;
-          border: 1px solid #cbd5e1;
+        .cart-print-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 0.45rem;
+        }
+        .btn-print-kot {
+          padding: 0.65rem 0.5rem;
+          background: #e0f2fe;
+          color: #0369a1;
+          border: 1.5px solid #7dd3fc;
           border-radius: 0.4rem;
-          font-weight: 700;
+          font-weight: 800;
           font-size: 0.85rem;
           cursor: pointer;
           transition: all 0.15s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.35rem;
         }
-        .btn-print-receipt:hover {
-          background: #e2e8f0;
-          color: #0f172a;
+        .btn-print-kot:hover {
+          background: #bae6fd;
+          border-color: #38bdf8;
+        }
+        .btn-print-kot:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+        .btn-print-bill {
+          padding: 0.65rem 0.5rem;
+          background: #fef3c7;
+          color: #92400e;
+          border: 1.5px solid #fcd34d;
+          border-radius: 0.4rem;
+          font-weight: 800;
+          font-size: 0.85rem;
+          cursor: pointer;
+          transition: all 0.15s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.35rem;
+        }
+        .btn-print-bill:hover {
+          background: #fde68a;
+          border-color: #f59e0b;
+        }
+        .btn-print-bill:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
         }
 
         .btn-complete-billing {
@@ -2727,10 +3069,250 @@ export default function POSTerminal({
           margin-bottom: 0.5rem;
           font-family: 'Outfit', sans-serif;
         }
-        .shortcut-card p {
+        /* Printer Designer Tab Styles */
+        .printer-designer-layout {
+          display: flex;
+          gap: 1.5rem;
+          padding: 1.5rem;
+          height: calc(100vh - 120px);
+          overflow-y: auto;
+          box-sizing: border-box;
+        }
+        .printer-preview-column {
+          width: 380px;
+          flex-shrink: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+        }
+        .preview-top-bar {
+          display: flex;
+        /* Printer Configuration Tab — Sleek Dark Theme (Matching Reference) */
+        .printer-config-screen {
+          padding: 2rem 1.5rem;
+          width: 100%;
+          min-height: calc(100vh - 120px);
+          background: #0b1120;
+          box-sizing: border-box;
+          overflow-y: auto;
+        }
+        .printer-config-layout {
+          display: grid;
+          grid-template-columns: 1.15fr 0.85fr;
+          gap: 1.75rem;
+          max-width: 1350px;
+          margin: 0 auto;
+        }
+        .config-card-dark {
+          background: #111c30;
+          border: 1px solid #1e293b;
+          border-radius: 0.85rem;
+          padding: 1.75rem;
+          color: #f8fafc;
+          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+        }
+        .config-card-header {
+          display: flex;
+          align-items: center;
+          gap: 0.65rem;
+          margin-bottom: 1.25rem;
+        }
+        .card-header-icon {
+          font-size: 1.3rem;
+        }
+        .config-card-header h2 {
+          margin: 0;
+          font-size: 1.25rem;
+          font-weight: 800;
+          color: #ffffff;
+          font-family: 'Outfit', sans-serif;
+        }
+        .configured-badge {
+          display: flex;
+          align-items: center;
+          gap: 0.65rem;
+          background: #152238;
+          border: 1.5px solid #eab308;
+          border-left: 5px solid #eab308;
+          border-radius: 0.5rem;
+          padding: 0.85rem 1rem;
+          font-size: 0.95rem;
+          font-weight: 700;
+          color: #ffffff;
+          margin-bottom: 1.5rem;
+        }
+        .config-group {
+          margin-bottom: 1.25rem;
+        }
+        .config-label {
+          display: block;
+          font-size: 0.85rem;
+          font-weight: 600;
+          color: #94a3b8;
+          margin-bottom: 0.45rem;
+        }
+        .config-select {
+          width: 100%;
+          background: #0b1120;
+          border: 1.5px solid #eab308;
+          border-radius: 0.5rem;
+          padding: 0.75rem 1rem;
+          color: #ffffff;
+          font-size: 0.95rem;
+          font-weight: 600;
+          outline: none;
+          box-sizing: border-box;
+          transition: border-color 0.15s;
+        }
+        .config-select:focus {
+          border-color: #facc15;
+          box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.2);
+        }
+        .config-hint {
+          display: block;
+          font-size: 0.75rem;
           color: #64748b;
+          margin-top: 0.35rem;
+        }
+        .preferences-title {
+          font-size: 0.88rem;
+          font-weight: 700;
+          color: #94a3b8;
+          margin-bottom: 0.75rem;
+        }
+        .preference-checkbox-row {
+          display: flex;
+          flex-direction: column;
+          gap: 0.65rem;
+          background: #0b1120;
+          padding: 0.85rem 1rem;
+          border-radius: 0.5rem;
+          border: 1px solid #1e293b;
+        }
+        .checkbox-item {
+          display: flex;
+          align-items: center;
+          gap: 0.65rem;
+          cursor: pointer;
+          font-size: 0.92rem;
+          font-weight: 600;
+          color: #f1f5f9;
+        }
+        .checkbox-item input[type="checkbox"] {
+          width: 1.15rem;
+          height: 1.15rem;
+          accent-color: #3b82f6;
+          cursor: pointer;
+        }
+        .config-buttons-row {
+          display: flex;
+          gap: 0.75rem;
+          margin-top: 1.5rem;
+        }
+        .btn-save-printer {
+          flex: 1;
+          background: #facc15;
+          color: #0f172a;
+          border: none;
+          padding: 0.85rem 1.25rem;
+          border-radius: 0.5rem;
+          font-weight: 800;
+          font-size: 0.95rem;
+          cursor: pointer;
+          transition: background 0.15s, transform 0.1s;
+          box-shadow: 0 4px 12px rgba(250, 204, 21, 0.3);
+        }
+        .btn-save-printer:hover {
+          background: #eab308;
+          transform: translateY(-1px);
+        }
+        .btn-refresh-printers {
+          background: #334155;
+          color: #ffffff;
+          border: 1px solid #475569;
+          padding: 0.85rem 1.25rem;
+          border-radius: 0.5rem;
+          font-weight: 700;
           font-size: 0.9rem;
+          cursor: pointer;
+          transition: background 0.15s;
+        }
+        .btn-refresh-printers:hover {
+          background: #475569;
+        }
+        .btn-send-test {
+          width: 100%;
+          background: #1e293b;
+          color: #ffffff;
+          border: 1px solid #475569;
+          padding: 0.9rem;
+          border-radius: 0.5rem;
+          font-weight: 800;
+          font-size: 0.95rem;
+          cursor: pointer;
+          margin-top: 1rem;
+          transition: all 0.15s;
+        }
+        .btn-send-test:hover {
+          background: #334155;
+          border-color: #64748b;
+        }
+        .btn-send-test:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+        .config-sidebar-column {
+          display: flex;
+          flex-direction: column;
+          gap: 1.5rem;
+        }
+        .setup-guide-card {
+          background: #111c30;
+          border: 1px solid #1e293b;
+          border-radius: 0.85rem;
+          padding: 1.5rem;
+          color: #cbd5e1;
+          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+        }
+        .setup-ol {
+          padding-left: 1.25rem;
+          margin: 0 0 1.25rem 0;
+          line-height: 1.85;
+          font-size: 0.9rem;
+          color: #94a3b8;
+        }
+        .setup-ol strong {
+          color: #facc15;
+        }
+        .setup-footer-note {
+          font-size: 0.82rem;
+          color: #64748b;
+          margin: 0;
           line-height: 1.5;
+          padding-top: 0.75rem;
+          border-top: 1px solid #1e293b;
+        }
+        .test-preview-card {
+          background: #111c30;
+          border: 1px solid #1e293b;
+          border-radius: 0.85rem;
+          padding: 1.5rem;
+          color: #f8fafc;
+          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+        }
+        .test-preview-box {
+          background: #0b1120;
+          border: 1px solid #1e293b;
+          border-radius: 0.5rem;
+          padding: 1rem;
+          font-family: 'Courier New', Courier, monospace;
+          font-size: 0.85rem;
+          font-weight: 700;
+          line-height: 1.4;
+          color: #38bdf8;
+          white-space: pre;
+          margin: 0;
+          overflow-x: auto;
         }
       `}</style>
     </div>
