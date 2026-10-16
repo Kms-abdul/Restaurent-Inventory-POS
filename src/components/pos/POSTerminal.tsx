@@ -454,6 +454,11 @@ export default function POSTerminal({
             data: printData,
             printerName: printerSettings.printerName || 'POSIO QX300',
             paperWidth: printerSettings.paperWidth || 48,
+          }).then(res => {
+            if (!res?.success) {
+              console.warn('Server direct print unavailable (cloud/Vercel). Triggering browser silent print fallback.')
+              window.print()
+            }
           })
         }
 
@@ -465,6 +470,10 @@ export default function POSTerminal({
               data: printData,
               printerName: printerSettings.printerName || 'POSIO QX300',
               paperWidth: printerSettings.paperWidth || 48,
+            }).then(res => {
+              if (!res?.success && !printerSettings.enableKotPrint) {
+                window.print()
+              }
             })
           }, delayMs)
         }

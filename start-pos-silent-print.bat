@@ -5,6 +5,7 @@ echo   Launching Restaurant POS in Silent Printing Mode
 echo   (No Print Dialog / Direct Thermal Print to QX300)
 echo =======================================================
 
+:: Change this to your Vercel URL if hosting online, e.g. https://your-pos.vercel.app/staff/pos
 set POS_URL=http://localhost:3000/staff/pos
 
 :: Check 64-bit Chrome
