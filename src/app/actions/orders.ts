@@ -110,6 +110,25 @@ export async function createPOSOrder(params: {
       .eq('id', result.order_id)
   }
 
+  // Automatically queue KOT in Supabase print_jobs for the 2nd floor printer bridge
+  if (result?.order_id) {
+    try {
+      void createKOTPrintJob({
+        branchId: params.branchId,
+        orderId: result.order_id,
+        orderNo: result.order_no,
+        restaurantName: ctx.restaurantName || 'CHINESE NAWAB',
+        branchName: ctx.branchName || '',
+        cashierName: ctx.userName || 'Staff',
+        tableNumber: params.tableNumber,
+        notes: params.notes,
+        items: params.items.map(i => ({ name: i.name, qty: i.qty, notes: i.notes })),
+      })
+    } catch (e) {
+      console.warn('Failed to queue print job:', e)
+    }
+  }
+
   // Only revalidate the POS page — dashboard picks it up on next natural visit
   revalidatePath('/staff/pos')
   return result

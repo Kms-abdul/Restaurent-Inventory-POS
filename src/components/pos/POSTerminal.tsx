@@ -173,6 +173,7 @@ export default function POSTerminal({
     paperWidth: 48,
     enableKotPrint: true,
     enableReceiptPrint: true,
+    enableLocalBrowserPrint: false,
     ticketType: 'receipt' as 'receipt' | 'kot',
     showPrices: true,
     headerText: restaurantName || 'CHINESE NAWAB',
@@ -192,6 +193,7 @@ export default function POSTerminal({
           paperWidth: Number(parsed.paperWidth) || 48,
           enableKotPrint: parsed.enableKotPrint !== false,
           enableReceiptPrint: parsed.enableReceiptPrint !== false,
+          enableLocalBrowserPrint: parsed.enableLocalBrowserPrint === true,
         }))
       }
     } catch {}
@@ -488,8 +490,7 @@ export default function POSTerminal({
             printerName: printerSettings.printerName || 'POSIO QX300',
             paperWidth: printerSettings.paperWidth || 48,
           }).then(res => {
-            if (!res?.success) {
-              console.warn('Server direct print unavailable (cloud/Vercel). Triggering browser silent print fallback.')
+            if (!res?.success && printerSettings.enableLocalBrowserPrint && typeof window !== 'undefined' && window.innerWidth > 900) {
               window.print()
             }
           })
@@ -504,7 +505,7 @@ export default function POSTerminal({
               printerName: printerSettings.printerName || 'POSIO QX300',
               paperWidth: printerSettings.paperWidth || 48,
             }).then(res => {
-              if (!res?.success && !printerSettings.enableKotPrint) {
+              if (!res?.success && !printerSettings.enableKotPrint && printerSettings.enableLocalBrowserPrint && typeof window !== 'undefined' && window.innerWidth > 900) {
                 window.print()
               }
             })
