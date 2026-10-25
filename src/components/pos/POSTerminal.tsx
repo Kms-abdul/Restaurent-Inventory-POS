@@ -87,6 +87,29 @@ const POS_TABS: { id: ActiveTab; label: string; icon: string }[] = [
 const DISCOUNT_PRESETS = [10, 20, 50]
 const DISCOUNT_REASONS = ['Relative / Owner', 'VIP Guest', 'Staff Meal', 'Promo']
 
+function getFoodEmoji(name: string, categoryName: string = ''): string {
+  const text = (name + ' ' + categoryName).toLowerCase()
+  if (text.includes('biryani')) return '🍛'
+  if (text.includes('noodle') || text.includes('chowmein') || text.includes('pasta') || text.includes('maggi')) return '🍜'
+  if (text.includes('rice') || text.includes('fried rice') || text.includes('pulao')) return '🍚'
+  if (text.includes('chicken') || text.includes('tandoori') || text.includes('tikka') || text.includes('wings')) return '🍗'
+  if (text.includes('mutton') || text.includes('meat') || text.includes('kebab')) return '🍖'
+  if (text.includes('fish') || text.includes('prawn') || text.includes('seafood')) return '🐟'
+  if (text.includes('soup') || text.includes('manchow')) return '🥣'
+  if (text.includes('roll') || text.includes('spring roll') || text.includes('shawarma')) return '🌯'
+  if (text.includes('burger')) return '🍔'
+  if (text.includes('pizza')) return '🍕'
+  if (text.includes('momo') || text.includes('dimsum')) return '🥟'
+  if (text.includes('dosa') || text.includes('idli') || text.includes('vada')) return '🥞'
+  if (text.includes('paneer') || text.includes('curry') || text.includes('dal') || text.includes('gravy')) return '🥘'
+  if (text.includes('roti') || text.includes('naan') || text.includes('paratha') || text.includes('bread') || text.includes('pao')) return '🫓'
+  if (text.includes('tea') || text.includes('chai') || text.includes('coffee')) return '☕'
+  if (text.includes('juice') || text.includes('shake') || text.includes('lassi') || text.includes('drink') || text.includes('coke') || text.includes('beverage')) return '🥤'
+  if (text.includes('ice cream') || text.includes('dessert') || text.includes('sweet') || text.includes('kulfi') || text.includes('cake')) return '🍨'
+  if (text.includes('salad')) return '🥗'
+  return '🍽️'
+}
+
 export default function POSTerminal({
   branchId,
   restaurantId,
@@ -232,6 +255,14 @@ export default function POSTerminal({
     })
     return counts
   }, [menuItems])
+
+  const cartItemMap = useMemo(() => {
+    const map = new Map<string, number>()
+    cart.forEach(ci => {
+      map.set(ci.menuItemId, ci.qty)
+    })
+    return map
+  }, [cart])
 
   const selectedCategoryName = selectedCategory
     ? categoryById.get(selectedCategory)?.name ?? 'Category'
@@ -481,6 +512,7 @@ export default function POSTerminal({
         }
 
         setBillingStatus('success')
+        setMobileOrderView('menu')
         setTimeout(() => setBillingStatus(null), 3000)
 
         // Refresh order list in background — UI already updated above
@@ -832,426 +864,749 @@ export default function POSTerminal({
         {/* TAB 1: ORDER SCREEN */}
         {activeTab === 'order' && (
           <div className="order-tab-wrapper">
-            {/* Mobile Segmented Switch (Only on mobile <= 900px, hidden on desktop) */}
-            <div className="mobile-order-switch">
-              <button
-                type="button"
-                className={`m-switch-btn ${mobileOrderView === 'menu' ? 'active' : ''}`}
-                onClick={() => setMobileOrderView('menu')}
-              >
-                🍴 Menu &amp; Items
-              </button>
-              <button
-                type="button"
-                className={`m-switch-btn ${mobileOrderView === 'cart' ? 'active' : ''}`}
-                onClick={() => setMobileOrderView('cart')}
-              >
-                🛒 Order Cart {totalCartQty > 0 ? `(${totalCartQty}) · ₹${finalTotalRupees.toFixed(2)}` : ''}
-              </button>
-            </div>
-
-            <div className="order-layout">
-              {/* Left Area: Categories & Items Grid */}
-              <div className={`order-left-panel ${mobileOrderView === 'cart' ? 'mobile-hidden' : ''}`}>
-              <div className="panel-header-row">
-                {selectedCategory && !searchQuery ? (
-                  <div className="cat-crumb-row">
-                    <button
-                      onClick={() => setSelectedCategory(null)}
-                      className="crumb-back-btn"
-                    >
-                      ←
-                    </button>
-                    <h2 className="panel-title">
-                      {selectedCategoryName}
-                    </h2>
+            {/* ─── DESKTOP ORDER VIEW (> 900px) ─────────────────────────── */}
+            <div className="desktop-pos-layout">
+              <div className="order-layout">
+                {/* Left Area: Categories & Items Grid */}
+                <div className="order-left-panel">
+                  <div className="panel-header-row">
+                    {selectedCategory && !searchQuery ? (
+                      <div className="cat-crumb-row">
+                        <button
+                          onClick={() => setSelectedCategory(null)}
+                          className="crumb-back-btn"
+                        >
+                          ←
+                        </button>
+                        <h2 className="panel-title">
+                          {selectedCategoryName}
+                        </h2>
+                      </div>
+                    ) : (
+                      <h2 className="panel-title">
+                        📋 {searchQuery ? 'Search Results' : 'Categories'}
+                      </h2>
+                    )}
                   </div>
-                ) : (
-                  <h2 className="panel-title">
-                    📋 {searchQuery ? 'Search Results' : 'Categories'}
-                  </h2>
-                )}
-              </div>
 
-              {/* Search Bar */}
-              <div className="search-bar-row">
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Search all items..."
-                  className="search-input"
-                />
-              </div>
+                  {/* Search Bar */}
+                  <div className="search-bar-row">
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      placeholder="Search all items..."
+                      className="search-input"
+                    />
+                  </div>
 
-              {/* View 1: Root Categories Grid (Screenshot 1) */}
-              {!selectedCategory && !searchQuery.trim() ? (
-                <div className="categories-grid">
-                  {categories.map(cat => (
-                    <div
-                      key={cat.id}
-                      onClick={() => setSelectedCategory(cat.id)}
-                      className="category-tile"
-                    >
-                      <div className="cat-name">{cat.name}</div>
-                      <div className="cat-count">{categoryItemCounts.get(cat.id) ?? 0} items</div>
+                  {/* View 1: Root Categories Grid (Screenshot 1) */}
+                  {!selectedCategory && !searchQuery.trim() ? (
+                    <div className="categories-grid">
+                      {categories.map(cat => (
+                        <div
+                          key={cat.id}
+                          onClick={() => setSelectedCategory(cat.id)}
+                          className="category-tile"
+                        >
+                          <div className="cat-name">{cat.name}</div>
+                          <div className="cat-count">{categoryItemCounts.get(cat.id) ?? 0} items</div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              ) : (
-                /* View 2: Items Grid in Category or Search (Screenshot 5) */
-                <div className="items-grid">
-                  {searchFilteredItems.length === 0 ? (
-                    <div className="empty-items-msg">No items found for this branch.</div>
                   ) : (
-                    searchFilteredItems.map(item => {
-                      const cat = categoryById.get(item.category_id)
-                      return (
-                        <div key={item.id} className="item-tile">
-                          <div className="item-tile-name">{item.name}</div>
-                          <div className="item-tile-cat">{cat?.name ?? ''}</div>
-                          <div className="item-tile-footer">
-                            <span className="item-tile-price">
-                              ₹{(item.price / 100).toFixed(2)}
-                            </span>
+                    /* View 2: Items Grid in Category or Search (Screenshot 5) */
+                    <div className="items-grid">
+                      {searchFilteredItems.length === 0 ? (
+                        <div className="empty-items-msg">No items found for this branch.</div>
+                      ) : (
+                        searchFilteredItems.map(item => {
+                          const cat = categoryById.get(item.category_id)
+                          return (
+                            <div key={item.id} className="item-tile">
+                              <div className="item-tile-name">{item.name}</div>
+                              <div className="item-tile-cat">{cat?.name ?? ''}</div>
+                              <div className="item-tile-footer">
+                                <span className="item-tile-price">
+                                  ₹{(item.price / 100).toFixed(2)}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => addToCart(item)}
+                                  className="item-tile-add-btn"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </div>
+                          )
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Right Area: Current Order Cart */}
+                <div className="order-right-panel">
+                  <div className="cart-top-bar">
+                    <div className="cart-top-left">
+                      <h2 className="cart-title">🛒 Current Order</h2>
+                      <div className="order-no-pill">
+                        <span className="order-no-label">Order #</span>
+                        <span className="order-no-num">{nextOrderNo}</span>
+                        <span className="auto-tag">AUTO</span>
+                      </div>
+                    </div>
+
+                    {cart.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={clearCart}
+                        className="btn-top-clear"
+                        title="Clear current cart"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Cart Items List */}
+                  <div className="cart-items-container">
+                    {cart.length === 0 ? (
+                      <div className="empty-cart-msg">Add items to order</div>
+                    ) : (
+                      cart.map(item => (
+                        <div key={item.menuItemId} className="cart-item-card">
+                          <div className="cart-item-row-top">
+                            <span className="cart-item-name">{item.name}</span>
                             <button
                               type="button"
-                              onClick={() => addToCart(item)}
-                              className="item-tile-add-btn"
+                              onClick={() => removeFromCart(item.menuItemId)}
+                              className="cart-item-delete"
+                              title="Remove item"
                             >
-                              +
+                              ✕
                             </button>
                           </div>
+
+                          <div className="cart-item-row-bottom">
+                            <div className="cart-item-calc">
+                              ₹{(item.unitPrice / 100).toFixed(2)} × {item.qty} = <strong className="cart-item-subtotal">₹{(item.lineTotal / 100).toFixed(2)}</strong>
+                            </div>
+
+                            <div className="cart-stepper-row">
+                              <button
+                                type="button"
+                                onClick={() => updateQty(item.menuItemId, -1)}
+                                className="stepper-btn"
+                                title="Decrease quantity"
+                              >
+                                -
+                              </button>
+                              <span className="stepper-val">{item.qty}</span>
+                              <button
+                                type="button"
+                                onClick={() => updateQty(item.menuItemId, 1)}
+                                className="stepper-btn"
+                                title="Increase quantity"
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
                         </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Pinned Bottom Footer */}
+                  <div className="cart-footer">
+                    {canDiscount && (
+                      <div className="cart-discount-section">
+                        <div className="discount-header-row">
+                          <span className="discount-title">🏷️ Discount &amp; Special</span>
+                          {discountPaise > 0 && (
+                            <button type="button" onClick={clearDiscount} className="btn-clear-discount">
+                              ✕ Reset
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="discount-presets-grid">
+                          <button
+                            type="button"
+                            onClick={toggleRelativeOrder}
+                            className={`btn-discount-relative ${isRelativeOrFree ? 'active' : ''}`}
+                            title="Mark 100% Free for Owner / Relative"
+                          >
+                            👑 Relative (₹0)
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => applyPercentPreset(10)}
+                            className={`btn-discount-preset ${!isRelativeOrFree && discountType === 'percent' && discountValue === 10 ? 'active' : ''}`}
+                          >
+                            10%
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => applyPercentPreset(20)}
+                            className={`btn-discount-preset ${!isRelativeOrFree && discountType === 'percent' && discountValue === 20 ? 'active' : ''}`}
+                          >
+                            20%
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => applyPercentPreset(50)}
+                            className={`btn-discount-preset ${!isRelativeOrFree && discountType === 'percent' && discountValue === 50 ? 'active' : ''}`}
+                          >
+                            50%
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setShowCustomDiscount(!showCustomDiscount)}
+                            className={`btn-discount-preset ${showCustomDiscount ? 'active-custom' : ''}`}
+                            title="Custom discount or notes"
+                          >
+                            ✏️ Other
+                          </button>
+                        </div>
+
+                        {showCustomDiscount && (
+                          <div className="custom-discount-panel">
+                            <div className="custom-type-switch">
+                              <button
+                                type="button"
+                                onClick={() => { setDiscountType('percent'); setDiscountValue(0); }}
+                                className={`type-switch-btn ${discountType === 'percent' ? 'active' : ''}`}
+                              >
+                                % Percent
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => { setDiscountType('fixed'); setDiscountValue(0); }}
+                                className={`type-switch-btn ${discountType === 'fixed' ? 'active' : ''}`}
+                              >
+                                ₹ Flat Off
+                              </button>
+                            </div>
+
+                            <div className="custom-inputs-row">
+                              <div className="custom-val-wrapper">
+                                <span className="val-prefix">{discountType === 'percent' ? '%' : '₹'}</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={discountType === 'percent' ? 100 : subtotalRupees}
+                                  value={discountValue || ''}
+                                  onChange={e => setDiscountValue(Math.max(0, parseFloat(e.target.value) || 0))}
+                                  placeholder="0"
+                                  className="custom-val-input"
+                                />
+                              </div>
+                              <input
+                                type="text"
+                                value={discountReason}
+                                onChange={e => setDiscountReason(e.target.value)}
+                                placeholder="Reason (VIP, Staff, Promo...)"
+                                className="custom-reason-input"
+                              />
+                            </div>
+
+                            <div className="reason-chips-row">
+                              {DISCOUNT_REASONS.map(chip => (
+                                <button
+                                  key={chip}
+                                  type="button"
+                                  onClick={() => setDiscountReason(chip)}
+                                  className={`reason-chip ${discountReason === chip ? 'active' : ''}`}
+                                >
+                                  {chip}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {discountPaise > 0 && (
+                      <div className="cart-breakdown">
+                        <div className="breakdown-row">
+                          <span>Subtotal:</span>
+                          <span>₹{subtotalRupees.toFixed(2)}</span>
+                        </div>
+                        <div className="breakdown-row discount-row">
+                          <span>
+                            Discount {discountReason ? `(${discountReason})` : discountType === 'percent' ? `(${discountValue}%)` : `(-₹${discountValue})`}:
+                          </span>
+                          <span className="discount-amount-text">
+                            -₹{discountRupees.toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="cart-total-row">
+                      <span>Total:</span>
+                      <span className={`cart-total-value ${finalTotalRupees === 0 && cart.length > 0 ? 'zero-total-val' : ''}`}>
+                        ₹{finalTotalRupees.toFixed(2)}
+                      </span>
+                    </div>
+
+                    {cart.length > 0 && finalTotalRupees === 0 && (
+                      <div className="relative-order-banner">
+                        <span className="banner-icon">👑</span>
+                        <div className="banner-text">
+                          <strong>Relative / 100% Free Order</strong>
+                          <p>Total is ₹0.00. No payment collected.</p>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="payment-mode-section">
+                      <div className="payment-label">
+                        {finalTotalRupees === 0 && cart.length > 0 ? 'Payment mode (Zero balance)' : 'Payment mode'}
+                      </div>
+                      <div className="payment-buttons-grid">
+                        {finalTotalRupees === 0 && cart.length > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => setPaymentMode('cash')}
+                            className="payment-btn active-zero"
+                            style={{ gridColumn: 'span 3', background: '#ecfdf5', borderColor: '#10b981', color: '#047857', fontWeight: 800 }}
+                          >
+                            🎁 Complimentary / Free (₹0.00)
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setPaymentMode('cash')}
+                              className={`payment-btn ${paymentMode === 'cash' ? 'active' : ''}`}
+                            >
+                              💵 Cash
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPaymentMode('card')}
+                              className={`payment-btn ${paymentMode === 'card' ? 'active' : ''}`}
+                            >
+                              💳 Card
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPaymentMode('upi')}
+                              className={`payment-btn ${paymentMode === 'upi' ? 'active' : ''}`}
+                            >
+                              📱 UPI
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="action-buttons-column">
+                      <button
+                        type="button"
+                        disabled={cart.length === 0 || isPending}
+                        onClick={handleCompleteBilling}
+                        className={`btn-complete-billing ${billingStatus === 'success' ? 'btn-complete-success' : ''} ${finalTotalRupees === 0 && cart.length > 0 ? 'btn-complete-zero' : ''}`}
+                      >
+                        {isPending
+                          ? (printerSettings.enableKotPrint || printerSettings.enableReceiptPrint ? '⏳ Processing & Printing...' : 'Processing...')
+                          : billingStatus === 'success'
+                            ? '✅ Order Completed & Printed!'
+                            : finalTotalRupees === 0 && cart.length > 0
+                              ? '👑 Settle Free Order (₹0.00)'
+                              : '💰 Complete Billing'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={clearCart}
+                        className="btn-clear-order"
+                      >
+                        Clear order
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ─── MOBILE EZO BILLING VIEW (<= 900px) ───────────────────── */}
+            <div className="mobile-pos-layout">
+              {mobileOrderView === 'menu' ? (
+                <div className="mobile-menu-view">
+                  {/* Search Bar */}
+                  <div className="ezo-search-bar">
+                    <span style={{ fontSize: '1rem', color: '#94a3b8' }}>🔍</span>
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      placeholder="Search menu items..."
+                      className="ezo-search-input"
+                    />
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery('')}
+                        className="ezo-search-clear"
+                        title="Clear search"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Horizontal Category Filter Pills */}
+                  <div className="ezo-category-pills">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCategory(null)
+                        setSearchQuery('')
+                      }}
+                      className={`ezo-pill ${!selectedCategory && !searchQuery ? 'active' : ''}`}
+                    >
+                      All Items ({menuItems.length})
+                    </button>
+                    {categories.map(cat => {
+                      const count = categoryItemCounts.get(cat.id) ?? 0
+                      const isActive = selectedCategory === cat.id
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedCategory(isActive ? null : cat.id)
+                            setSearchQuery('')
+                          }}
+                          className={`ezo-pill ${isActive ? 'active' : ''}`}
+                        >
+                          {cat.name} ({count})
+                        </button>
                       )
-                    })
+                    })}
+                  </div>
+
+                  {/* Section Title */}
+                  <div className="ezo-section-heading">
+                    <h2 className="ezo-section-title">
+                      {selectedCategory
+                        ? selectedCategoryName
+                        : searchQuery.trim()
+                          ? `Results for "${searchQuery.trim()}"`
+                          : 'Best Seller Items'}
+                    </h2>
+                    <span className="ezo-section-count">
+                      {searchFilteredItems.length} {searchFilteredItems.length === 1 ? 'item' : 'items'}
+                    </span>
+                  </div>
+
+                  {/* EZO 3-Column Food Items Grid */}
+                  <div className="ezo-food-grid">
+                    {searchFilteredItems.length === 0 ? (
+                      <div style={{ gridColumn: 'span 3', textAlign: 'center', padding: '2rem 1rem', color: '#64748b' }}>
+                        No items found in this section.
+                      </div>
+                    ) : (
+                      searchFilteredItems.map(item => {
+                        const inCartQty = cartItemMap.get(item.id) || 0
+                        const cat = categoryById.get(item.category_id)
+                        return (
+                          <div
+                            key={item.id}
+                            className={`ezo-card ${inCartQty > 0 ? 'in-cart' : ''}`}
+                          >
+                            <div className="ezo-img-wrapper">
+                              {item.image_url ? (
+                                <img
+                                  src={item.image_url}
+                                  alt={item.name}
+                                  className="ezo-food-img"
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <span className="ezo-food-emoji">
+                                  {getFoodEmoji(item.name, cat?.name)}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="ezo-item-name" title={item.name}>
+                              {item.name}
+                            </div>
+
+                            <div className="ezo-card-footer">
+                              <span className="ezo-card-price">
+                                ₹{(item.price / 100).toFixed(0)}
+                              </span>
+
+                              {inCartQty === 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => addToCart(item)}
+                                  className="ezo-btn-add"
+                                  title="Add to order"
+                                >
+                                  +
+                                </button>
+                              ) : (
+                                <div className="ezo-stepper-mini">
+                                  <button
+                                    type="button"
+                                    onClick={() => updateQty(item.id, -1)}
+                                    className="ezo-btn-minus"
+                                    title="Decrease"
+                                  >
+                                    -
+                                  </button>
+                                  <span className="ezo-qty-badge">{inCartQty}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => addToCart(item)}
+                                    className="ezo-btn-plus-mini"
+                                    title="Increase"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+
+                  {/* Fixed Floating Bottom Cart Bar */}
+                  {cart.length > 0 && (
+                    <div
+                      className="ezo-floating-cart-bar"
+                      onClick={() => setMobileOrderView('cart')}
+                    >
+                      <div className="ezo-cart-bar-left">
+                        <span className="ezo-cart-bar-badge">{totalCartQty} Items</span>
+                        <span className="ezo-cart-bar-total">₹{finalTotalRupees.toFixed(2)}</span>
+                      </div>
+                      <div className="ezo-cart-bar-right">
+                        <span>Review &amp; Pay</span>
+                        <span style={{ fontSize: '1.1rem' }}>➔</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* Mobile Cart & Settle Screen */
+                <div className="mobile-cart-view">
+                  {/* Top Return Button */}
+                  <button
+                    type="button"
+                    onClick={() => setMobileOrderView('menu')}
+                    className="mobile-cart-back-btn"
+                  >
+                    <span>← Back to Menu (+ Add Items)</span>
+                  </button>
+
+                  <div className="cart-top-bar" style={{ padding: '0 0 0.5rem 0' }}>
+                    <div className="cart-top-left">
+                      <h2 className="cart-title" style={{ fontSize: '1.05rem' }}>🛒 Order Cart</h2>
+                      <div className="order-no-pill">
+                        <span className="order-no-label">Order #</span>
+                        <span className="order-no-num">{nextOrderNo}</span>
+                        <span className="auto-tag">AUTO</span>
+                      </div>
+                    </div>
+                    {cart.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={clearCart}
+                        className="btn-top-clear"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Scrollable Cart Items */}
+                  <div className="mobile-cart-items-scroll">
+                    {cart.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: '#64748b' }}>
+                        Cart is empty. Tap Back to Menu to add items.
+                      </div>
+                    ) : (
+                      cart.map(ci => (
+                        <div key={ci.menuItemId} className="cart-item-card" style={{ margin: 0 }}>
+                          <div className="cart-item-row-top">
+                            <span className="cart-item-name">{ci.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeFromCart(ci.menuItemId)}
+                              className="cart-item-delete"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                          <div className="cart-item-row-bottom">
+                            <div className="cart-item-calc">
+                              ₹{(ci.unitPrice / 100).toFixed(2)} × {ci.qty} = <strong>₹{(ci.lineTotal / 100).toFixed(2)}</strong>
+                            </div>
+                            <div className="cart-stepper-row">
+                              <button
+                                type="button"
+                                onClick={() => updateQty(ci.menuItemId, -1)}
+                                className="stepper-btn"
+                              >
+                                -
+                              </button>
+                              <span className="stepper-val">{ci.qty}</span>
+                              <button
+                                type="button"
+                                onClick={() => updateQty(ci.menuItemId, 1)}
+                                className="stepper-btn"
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Pinned Mobile Cart Footer */}
+                  {cart.length > 0 && (
+                    <div className="mobile-cart-footer">
+                      {/* Discount Quick Row */}
+                      {canDiscount && (
+                        <div style={{ marginBottom: '0.5rem' }}>
+                          <div className="discount-presets-grid">
+                            <button
+                              type="button"
+                              onClick={toggleRelativeOrder}
+                              className={`btn-discount-relative ${isRelativeOrFree ? 'active' : ''}`}
+                            >
+                              👑 Relative (₹0)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => applyPercentPreset(10)}
+                              className={`btn-discount-preset ${!isRelativeOrFree && discountType === 'percent' && discountValue === 10 ? 'active' : ''}`}
+                            >
+                              10%
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => applyPercentPreset(20)}
+                              className={`btn-discount-preset ${!isRelativeOrFree && discountType === 'percent' && discountValue === 20 ? 'active' : ''}`}
+                            >
+                              20%
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setShowCustomDiscount(!showCustomDiscount)}
+                              className={`btn-discount-preset ${showCustomDiscount ? 'active-custom' : ''}`}
+                            >
+                              ✏️ Other
+                            </button>
+                          </div>
+                          {showCustomDiscount && (
+                            <div className="custom-discount-panel" style={{ marginTop: '0.4rem' }}>
+                              <div className="custom-inputs-row">
+                                <div className="custom-val-wrapper">
+                                  <span className="val-prefix">{discountType === 'percent' ? '%' : '₹'}</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max={discountType === 'percent' ? 100 : subtotalRupees}
+                                    value={discountValue || ''}
+                                    onChange={e => setDiscountValue(Math.max(0, parseFloat(e.target.value) || 0))}
+                                    placeholder="0"
+                                    className="custom-val-input"
+                                  />
+                                </div>
+                                <input
+                                  type="text"
+                                  value={discountReason}
+                                  onChange={e => setDiscountReason(e.target.value)}
+                                  placeholder="Reason"
+                                  className="custom-reason-input"
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Total Line */}
+                      <div className="cart-total-row" style={{ padding: '0.35rem 0' }}>
+                        <span>Grand Total:</span>
+                        <span className={`cart-total-value ${finalTotalRupees === 0 ? 'zero-total-val' : ''}`}>
+                          ₹{finalTotalRupees.toFixed(2)}
+                        </span>
+                      </div>
+
+                      {/* Payment Mode */}
+                      <div className="payment-buttons-grid" style={{ margin: '0.4rem 0' }}>
+                        {finalTotalRupees === 0 ? (
+                          <div style={{ gridColumn: 'span 3', textAlign: 'center', background: '#ecfdf5', color: '#047857', padding: '0.4rem', borderRadius: '0.4rem', fontWeight: 700, fontSize: '0.85rem' }}>
+                            🎁 Complimentary (₹0.00)
+                          </div>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setPaymentMode('cash')}
+                              className={`payment-btn ${paymentMode === 'cash' ? 'active' : ''}`}
+                            >
+                              💵 Cash
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPaymentMode('upi')}
+                              className={`payment-btn ${paymentMode === 'upi' ? 'active' : ''}`}
+                            >
+                              📱 UPI
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPaymentMode('card')}
+                              className={`payment-btn ${paymentMode === 'card' ? 'active' : ''}`}
+                            >
+                              💳 Card
+                            </button>
+                          </>
+                        )}
+                      </div>
+
+                      {/* Complete Billing Button */}
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={handleCompleteBilling}
+                        className={`btn-complete-billing ${billingStatus === 'success' ? 'btn-complete-success' : ''}`}
+                        style={{ width: '100%', marginTop: '0.35rem', padding: '0.75rem' }}
+                      >
+                        {isPending
+                          ? '⏳ Processing...'
+                          : billingStatus === 'success'
+                            ? '✅ Order Placed & Printed!'
+                            : finalTotalRupees === 0
+                              ? '👑 Settle Free Order (₹0.00)'
+                              : `💰 Complete Billing (₹${finalTotalRupees.toFixed(2)})`}
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
-
-              </div>
-
-            {/* Right Area: Current Order Cart */}
-            <div className={`order-right-panel ${mobileOrderView === 'menu' ? 'mobile-hidden' : ''}`}>
-              {/* Mobile Back Button */}
-              <button
-                type="button"
-                className="mobile-back-to-menu-btn"
-                onClick={() => setMobileOrderView('menu')}
-              >
-                ← Back to Menu (+ Add Items)
-              </button>
-
-              <div className="cart-top-bar">
-                <div className="cart-top-left">
-                  <h2 className="cart-title">🛒 Current Order</h2>
-                  <div className="order-no-pill">
-                    <span className="order-no-label">Order #</span>
-                    <span className="order-no-num">{nextOrderNo}</span>
-                    <span className="auto-tag">AUTO</span>
-                  </div>
-                </div>
-
-                {cart.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={clearCart}
-                    className="btn-top-clear"
-                    title="Clear current cart"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-
-              {/* Cart Items List — takes all available height and scrolls smoothly for 10-20+ items */}
-              <div className="cart-items-container">
-                {cart.length === 0 ? (
-                  <div className="empty-cart-msg">Add items to order</div>
-                ) : (
-                  cart.map(item => (
-                    <div key={item.menuItemId} className="cart-item-card">
-                      <div className="cart-item-row-top">
-                        <span className="cart-item-name">{item.name}</span>
-                        <button
-                          type="button"
-                          onClick={() => removeFromCart(item.menuItemId)}
-                          className="cart-item-delete"
-                          title="Remove item"
-                        >
-                          ✕
-                        </button>
-                      </div>
-
-                      <div className="cart-item-row-bottom">
-                        <div className="cart-item-calc">
-                          ₹{(item.unitPrice / 100).toFixed(2)} × {item.qty} = <strong className="cart-item-subtotal">₹{(item.lineTotal / 100).toFixed(2)}</strong>
-                        </div>
-
-                        <div className="cart-stepper-row">
-                          <button
-                            type="button"
-                            onClick={() => updateQty(item.menuItemId, -1)}
-                            className="stepper-btn"
-                            title="Decrease quantity"
-                          >
-                            -
-                          </button>
-                          <span className="stepper-val">{item.qty}</span>
-                          <button
-                            type="button"
-                            onClick={() => updateQty(item.menuItemId, 1)}
-                            className="stepper-btn"
-                            title="Increase quantity"
-                          >
-                            +
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {/* Pinned Bottom Footer — Never overlaps items */}
-              <div className="cart-footer">
-                {/* Direct Discount & Relative Quick Presets */}
-                {canDiscount && (
-                  <div className="cart-discount-section">
-                    <div className="discount-header-row">
-                      <span className="discount-title">🏷️ Discount & Special</span>
-                      {discountPaise > 0 && (
-                        <button type="button" onClick={clearDiscount} className="btn-clear-discount">
-                          ✕ Reset
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="discount-presets-grid">
-                      <button
-                        type="button"
-                        onClick={toggleRelativeOrder}
-                        className={`btn-discount-relative ${isRelativeOrFree ? 'active' : ''}`}
-                        title="Mark 100% Free for Owner / Relative"
-                      >
-                        👑 Relative (₹0)
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => applyPercentPreset(10)}
-                        className={`btn-discount-preset ${!isRelativeOrFree && discountType === 'percent' && discountValue === 10 ? 'active' : ''}`}
-                      >
-                        10%
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => applyPercentPreset(20)}
-                        className={`btn-discount-preset ${!isRelativeOrFree && discountType === 'percent' && discountValue === 20 ? 'active' : ''}`}
-                      >
-                        20%
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => applyPercentPreset(50)}
-                        className={`btn-discount-preset ${!isRelativeOrFree && discountType === 'percent' && discountValue === 50 ? 'active' : ''}`}
-                      >
-                        50%
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setShowCustomDiscount(!showCustomDiscount)}
-                        className={`btn-discount-preset ${showCustomDiscount ? 'active-custom' : ''}`}
-                        title="Custom discount or notes"
-                      >
-                        ✏️ Other
-                      </button>
-                    </div>
-
-                    {/* Expandable Custom Discount / Notes Drawer */}
-                    {showCustomDiscount && (
-                      <div className="custom-discount-panel">
-                        <div className="custom-type-switch">
-                          <button
-                            type="button"
-                            onClick={() => { setDiscountType('percent'); setDiscountValue(0); }}
-                            className={`type-switch-btn ${discountType === 'percent' ? 'active' : ''}`}
-                          >
-                            % Percent
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => { setDiscountType('fixed'); setDiscountValue(0); }}
-                            className={`type-switch-btn ${discountType === 'fixed' ? 'active' : ''}`}
-                          >
-                            ₹ Flat Off
-                          </button>
-                        </div>
-
-                        <div className="custom-inputs-row">
-                          <div className="custom-val-wrapper">
-                            <span className="val-prefix">{discountType === 'percent' ? '%' : '₹'}</span>
-                            <input
-                              type="number"
-                              min="0"
-                              max={discountType === 'percent' ? 100 : subtotalRupees}
-                              value={discountValue || ''}
-                              onChange={e => setDiscountValue(Math.max(0, parseFloat(e.target.value) || 0))}
-                              placeholder="0"
-                              className="custom-val-input"
-                            />
-                          </div>
-                          <input
-                            type="text"
-                            value={discountReason}
-                            onChange={e => setDiscountReason(e.target.value)}
-                            placeholder="Reason (VIP, Staff, Promo...)"
-                            className="custom-reason-input"
-                          />
-                        </div>
-
-                        <div className="reason-chips-row">
-                          {DISCOUNT_REASONS.map(chip => (
-                            <button
-                              key={chip}
-                              type="button"
-                              onClick={() => setDiscountReason(chip)}
-                              className={`reason-chip ${discountReason === chip ? 'active' : ''}`}
-                            >
-                              {chip}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Subtotal & Discount Breakdown Lines */}
-                {discountPaise > 0 && (
-                  <div className="cart-breakdown">
-                    <div className="breakdown-row">
-                      <span>Subtotal:</span>
-                      <span>₹{subtotalRupees.toFixed(2)}</span>
-                    </div>
-                    <div className="breakdown-row discount-row">
-                      <span>
-                        Discount {discountReason ? `(${discountReason})` : discountType === 'percent' ? `(${discountValue}%)` : `(-₹${discountValue})`}:
-                      </span>
-                      <span className="discount-amount-text">
-                        -₹{discountRupees.toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                <div className="cart-total-row">
-                  <span>Total:</span>
-                  <span className={`cart-total-value ${finalTotalRupees === 0 && cart.length > 0 ? 'zero-total-val' : ''}`}>
-                    ₹{finalTotalRupees.toFixed(2)}
-                  </span>
-                </div>
-
-                {/* Relative / Free Meal Alert Banner */}
-                {cart.length > 0 && finalTotalRupees === 0 && (
-                  <div className="relative-order-banner">
-                    <span className="banner-icon">👑</span>
-                    <div className="banner-text">
-                      <strong>Relative / 100% Free Order</strong>
-                      <p>Total is ₹0.00. No payment collected.</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Payment Mode Selector */}
-                <div className="payment-mode-section">
-                  <div className="payment-label">
-                    {finalTotalRupees === 0 && cart.length > 0 ? 'Payment mode (Zero balance)' : 'Payment mode'}
-                  </div>
-                  <div className="payment-buttons-grid">
-                    {finalTotalRupees === 0 && cart.length > 0 ? (
-                      <button
-                        type="button"
-                        onClick={() => setPaymentMode('cash')}
-                        className="payment-btn active-zero"
-                        style={{ gridColumn: 'span 3', background: '#ecfdf5', borderColor: '#10b981', color: '#047857', fontWeight: 800 }}
-                      >
-                        🎁 Complimentary / Free (₹0.00)
-                      </button>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => setPaymentMode('cash')}
-                          className={`payment-btn ${paymentMode === 'cash' ? 'active' : ''}`}
-                        >
-                          💵 Cash
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPaymentMode('card')}
-                          className={`payment-btn ${paymentMode === 'card' ? 'active' : ''}`}
-                        >
-                          💳 Card
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setPaymentMode('upi')}
-                          className={`payment-btn ${paymentMode === 'upi' ? 'active' : ''}`}
-                        >
-                          📱 UPI
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <div className="action-buttons-column">
-                  <button
-                    type="button"
-                    disabled={cart.length === 0 || isPending}
-                    onClick={handleCompleteBilling}
-                    className={`btn-complete-billing ${billingStatus === 'success' ? 'btn-complete-success' : ''} ${finalTotalRupees === 0 && cart.length > 0 ? 'btn-complete-zero' : ''}`}
-                  >
-                    {isPending
-                      ? (printerSettings.enableKotPrint || printerSettings.enableReceiptPrint ? '⏳ Processing & Printing...' : 'Processing...')
-                      : billingStatus === 'success'
-                        ? '✅ Order Completed & Printed!'
-                        : finalTotalRupees === 0 && cart.length > 0
-                          ? '👑 Settle Free Order (₹0.00)'
-                          : '💰 Complete Billing'}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={clearCart}
-                    className="btn-clear-order"
-                  >
-                    Clear order
-                  </button>
-                </div>
-              </div>
             </div>
-          </div>
-
-          {/* Floating Mobile Cart Bar (visible only on mobile in menu view when cart has items) */}
-          {cart.length > 0 && mobileOrderView === 'menu' && (
-            <div className="mobile-floating-cart-bar" onClick={() => setMobileOrderView('cart')}>
-              <div className="m-cart-info">
-                <span className="m-cart-badge">{totalCartQty}</span>
-                <span className="m-cart-text">item{totalCartQty > 1 ? 's' : ''}</span>
-                <span className="m-cart-sep">•</span>
-                <span className="m-cart-total">₹{finalTotalRupees.toFixed(2)}</span>
-              </div>
-              <div className="m-cart-action">
-                <span>View Order &amp; Pay</span>
-                <span className="m-cart-arrow">→</span>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
@@ -3458,16 +3813,6 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
           min-height: 0;
           overflow: hidden;
         }
-        .mobile-order-switch {
-          display: none !important;
-        }
-        .mobile-floating-cart-bar {
-          display: none !important;
-        }
-        .mobile-back-to-menu-btn {
-          display: none !important;
-        }
-
         /* ─── Responsive Mobile Styles (<= 900px) ─────────────────────────── */
         @media screen and (max-width: 900px) {
           .header-inner {
@@ -3513,7 +3858,7 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
 
           /* Body & Order screen */
           .pos-body {
-            height: calc(100vh - 110px);
+            height: calc(100vh - 100px);
             padding: 0.5rem;
             max-width: 100%;
           }
@@ -3524,156 +3869,6 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
             display: flex;
             flex-direction: column;
             overflow: hidden;
-          }
-
-          /* Mobile Top Segmented Switch */
-          .mobile-order-switch {
-            display: grid !important;
-            grid-template-columns: 1fr 1fr;
-            gap: 0.35rem;
-            background: #e2e8f0;
-            padding: 0.25rem;
-            border-radius: 0.5rem;
-            flex-shrink: 0;
-            margin-bottom: 0.5rem;
-            width: 100%;
-          }
-          .m-switch-btn {
-            padding: 0.55rem;
-            border: none;
-            border-radius: 0.4rem;
-            background: transparent;
-            color: #475569;
-            font-size: 0.85rem;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.15s;
-            text-align: center;
-          }
-          .m-switch-btn.active {
-            background: #ffffff;
-            color: #b45309;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-          }
-
-          .order-layout {
-            display: flex !important;
-            flex-direction: column !important;
-            height: 100% !important;
-            flex: 1 1 auto !important;
-            min-height: 0 !important;
-            overflow: hidden !important;
-            gap: 0 !important;
-          }
-
-          /* Panels in mobile view */
-          .order-left-panel {
-            flex: 1 1 auto !important;
-            height: 100% !important;
-            width: 100% !important;
-            padding: 0.75rem !important;
-            padding-bottom: 5rem !important; /* space for fixed floating cart bar */
-            border-radius: 0.5rem !important;
-            overflow-y: auto !important;
-          }
-          .order-left-panel.mobile-hidden {
-            display: none !important;
-          }
-
-          .order-right-panel {
-            flex: 1 1 auto !important;
-            height: 100% !important;
-            width: 100% !important;
-            max-width: 100% !important;
-            padding: 0.75rem !important;
-            border-radius: 0.5rem !important;
-            overflow-y: auto !important;
-          }
-          .order-right-panel.mobile-hidden {
-            display: none !important;
-          }
-
-          /* Mobile Back to Menu button */
-          .mobile-back-to-menu-btn {
-            display: flex !important;
-            align-items: center;
-            justify-content: center;
-            width: 100%;
-            background: #fef3c7;
-            border: 1.5px solid #fde68a;
-            border-radius: 0.5rem;
-            padding: 0.6rem;
-            color: #92400e;
-            font-size: 0.85rem;
-            font-weight: 800;
-            cursor: pointer;
-            margin-bottom: 0.65rem;
-            flex-shrink: 0;
-          }
-          .mobile-back-to-menu-btn:hover {
-            background: #fde68a;
-          }
-
-          /* Floating Mobile Cart Bar */
-          .mobile-floating-cart-bar {
-            display: flex !important;
-            align-items: center;
-            justify-content: space-between;
-            position: fixed !important;
-            bottom: 0.85rem !important;
-            left: 0.85rem !important;
-            right: 0.85rem !important;
-            background: linear-gradient(135deg, #1e293b, #0f172a);
-            color: #ffffff;
-            padding: 0.75rem 1.15rem;
-            border-radius: 0.75rem;
-            box-shadow: 0 10px 25px rgba(15, 23, 42, 0.4);
-            cursor: pointer;
-            z-index: 999 !important;
-            border: 1.5px solid #334155;
-            animation: slideUp 0.2s ease-out;
-          }
-          @keyframes slideUp {
-            from { transform: translateY(12px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
-          }
-          .m-cart-info {
-            display: flex;
-            align-items: center;
-            gap: 0.45rem;
-          }
-          .m-cart-badge {
-            background: #f59e0b;
-            color: #0f172a;
-            font-weight: 800;
-            font-size: 0.82rem;
-            padding: 0.15rem 0.5rem;
-            border-radius: 0.35rem;
-          }
-          .m-cart-text {
-            font-size: 0.85rem;
-            color: #cbd5e1;
-            font-weight: 500;
-          }
-          .m-cart-sep {
-            color: #64748b;
-          }
-          .m-cart-total {
-            font-size: 1rem;
-            font-weight: 800;
-            color: #38bdf8;
-            font-family: 'Outfit', sans-serif;
-          }
-          .m-cart-action {
-            display: flex;
-            align-items: center;
-            gap: 0.35rem;
-            font-size: 0.85rem;
-            font-weight: 800;
-            color: #facc15;
-          }
-          .m-cart-arrow {
-            font-size: 1.1rem;
           }
 
           /* Categories & Items grids */
