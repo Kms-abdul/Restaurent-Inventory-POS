@@ -87,6 +87,105 @@ export default function TopNavigation({
           );
         })}
       </nav>
+
+      <style jsx>{`
+        .pos-header {
+          background: #ffffff;
+          border-bottom: 1px solid #e2e8f0;
+          padding: 0.75rem 1.25rem;
+        }
+        .header-content {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          max-width: 1400px;
+          margin: 0 auto;
+        }
+        .header-title h1 {
+          font-size: 1.25rem;
+          font-weight: 800;
+          color: #0f172a;
+          margin: 0;
+        }
+        .header-title p {
+          font-size: 0.75rem;
+          color: #64748b;
+          margin: 0;
+        }
+        .header-right {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+        }
+        .user-chip {
+          text-align: right;
+          font-size: 0.8rem;
+          color: #334155;
+        }
+        .mobile-menu-btn {
+          display: none;
+          background: #f1f5f9;
+          border: 1px solid #cbd5e1;
+          border-radius: 4px;
+          padding: 0.35rem 0.6rem;
+          font-size: 1.1rem;
+          cursor: pointer;
+        }
+        .nav-tabs {
+          display: flex;
+          background: #f8fafc;
+          border-bottom: 1px solid #e2e8f0;
+          padding: 0 1rem;
+          overflow-x: auto;
+          white-space: nowrap;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: none;
+        }
+        .nav-tabs::-webkit-scrollbar {
+          display: none;
+        }
+        .nav-tab {
+          padding: 0.65rem 1rem;
+          border: none;
+          background: transparent;
+          color: #64748b;
+          font-weight: 600;
+          font-size: 0.85rem;
+          border-bottom: 3px solid transparent;
+          cursor: pointer;
+          flex-shrink: 0;
+        }
+        .nav-tab.active {
+          color: #d97706;
+          border-bottom-color: #d97706;
+          background: #fffbeb;
+        }
+
+        @media (max-width: 768px) {
+          .pos-header {
+            padding: 0.5rem 0.75rem;
+          }
+          .header-title h1 {
+            font-size: 1.05rem;
+          }
+          .header-title p {
+            display: none;
+          }
+          .user-chip {
+            display: none;
+          }
+          .mobile-menu-btn {
+            display: block;
+          }
+          .nav-tabs {
+            padding: 0 0.5rem;
+          }
+          .nav-tab {
+            padding: 0.55rem 0.75rem;
+            font-size: 0.8rem;
+          }
+        }
+      `}</style>
     </>
   );
 }

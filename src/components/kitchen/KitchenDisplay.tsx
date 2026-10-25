@@ -29,6 +29,7 @@ export default function KitchenDisplay({ orders: initialOrders, branchId, canUpd
   const [orders, setOrders] = useState<OrderWithItems[]>(initialOrders)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+  const [mobileStatusTab, setMobileStatusTab] = useState<'pending' | 'cooking' | 'ready'>('pending')
 
   // Real-time subscription
   useEffect(() => {
@@ -153,8 +154,33 @@ export default function KitchenDisplay({ orders: initialOrders, branchId, canUpd
         <div className="kds-live-dot" aria-label="Live updates active" />
       </div>
 
+      {/* Mobile Column Tab Switcher (<= 768px) */}
+      <div className="kds-mobile-tabs">
+        <button
+          type="button"
+          className={`kds-tab-btn ${mobileStatusTab === 'pending' ? 'active-pending' : ''}`}
+          onClick={() => setMobileStatusTab('pending')}
+        >
+          Pending ({pending.length})
+        </button>
+        <button
+          type="button"
+          className={`kds-tab-btn ${mobileStatusTab === 'cooking' ? 'active-cooking' : ''}`}
+          onClick={() => setMobileStatusTab('cooking')}
+        >
+          Cooking ({cooking.length})
+        </button>
+        <button
+          type="button"
+          className={`kds-tab-btn ${mobileStatusTab === 'ready' ? 'active-ready' : ''}`}
+          onClick={() => setMobileStatusTab('ready')}
+        >
+          Ready ({ready.length})
+        </button>
+      </div>
+
       <div className="kds-board">
-        <div className="kds-column">
+        <div className={`kds-column ${mobileStatusTab !== 'pending' ? 'kds-mobile-hidden' : ''}`}>
           <div className="kds-column-header" style={{ borderColor: '#92400E' }}>
             <span>Pending</span>
             <span className="kds-count">{pending.length}</span>
@@ -167,7 +193,7 @@ export default function KitchenDisplay({ orders: initialOrders, branchId, canUpd
           </div>
         </div>
 
-        <div className="kds-column">
+        <div className={`kds-column ${mobileStatusTab !== 'cooking' ? 'kds-mobile-hidden' : ''}`}>
           <div className="kds-column-header" style={{ borderColor: '#1D4ED8' }}>
             <span>Cooking</span>
             <span className="kds-count">{cooking.length}</span>
@@ -180,7 +206,7 @@ export default function KitchenDisplay({ orders: initialOrders, branchId, canUpd
           </div>
         </div>
 
-        <div className="kds-column">
+        <div className={`kds-column ${mobileStatusTab !== 'ready' ? 'kds-mobile-hidden' : ''}`}>
           <div className="kds-column-header" style={{ borderColor: '#166534' }}>
             <span>Ready</span>
             <span className="kds-count">{ready.length}</span>
@@ -200,6 +226,9 @@ export default function KitchenDisplay({ orders: initialOrders, branchId, canUpd
         .kds-header h1 { font-family: 'Outfit', sans-serif; font-size: 1.1rem; font-weight: 800; color: #F1F5F9; letter-spacing: -0.01em; text-transform: uppercase; letter-spacing: 0.04em; }
         .kds-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #4ADE80; box-shadow: 0 0 10px rgba(74, 222, 128, 0.6); animation: kds-pulse 2s infinite; margin-left: auto; }
         @keyframes kds-pulse { 0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(0.8)} }
+        
+        .kds-mobile-tabs { display: none; }
+
         .kds-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; padding: 0.875rem; flex: 1; overflow: hidden; }
         .kds-column { display: flex; flex-direction: column; min-height: 0; }
         .kds-column-header { display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 0.875rem; border-radius: 4px 4px 0 0; border-left: 3px solid; border-right: 1px solid #1E293B; border-top: 1px solid #1E293B; background: #1E293B; font-weight: 700; font-size: 0.72rem; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.1em; }
@@ -225,6 +254,58 @@ export default function KitchenDisplay({ orders: initialOrders, branchId, canUpd
         .kds-action-btn { width: 100%; padding: 0.55rem; border: none; border-radius: 4px; color: #ffffff; font-weight: 700; font-size: 0.82rem; cursor: pointer; transition: filter 0.12s; letter-spacing: 0.02em; }
         .kds-action-btn:hover:not(:disabled) { filter: brightness(1.15); }
         .kds-action-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+        @media screen and (max-width: 768px) {
+          .kds-header {
+            padding: 0.65rem 1rem;
+          }
+          .kds-mobile-tabs {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.35rem;
+            padding: 0.4rem 0.65rem;
+            background: #1e293b;
+            border-bottom: 1px solid #334155;
+          }
+          .kds-tab-btn {
+            padding: 0.45rem 0.25rem;
+            background: #0f172a;
+            border: 1px solid #334155;
+            color: #94a3b8;
+            font-size: 0.75rem;
+            font-weight: 700;
+            border-radius: 4px;
+            cursor: pointer;
+            text-align: center;
+          }
+          .kds-tab-btn.active-pending {
+            background: #92400e;
+            color: #ffffff;
+            border-color: #f59e0b;
+          }
+          .kds-tab-btn.active-cooking {
+            background: #1d4ed8;
+            color: #ffffff;
+            border-color: #60a5fa;
+          }
+          .kds-tab-btn.active-ready {
+            background: #166534;
+            color: #ffffff;
+            border-color: #4ade80;
+          }
+          .kds-board {
+            display: flex;
+            flex-direction: column;
+            padding: 0.5rem;
+          }
+          .kds-column {
+            flex: 1;
+            width: 100%;
+          }
+          .kds-column.kds-mobile-hidden {
+            display: none !important;
+          }
+        }
       `}</style>
     </div>
   )

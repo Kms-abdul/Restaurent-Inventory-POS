@@ -110,6 +110,7 @@ export default function POSTerminal({
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [cart, setCart] = useState<CartItem[]>([])
+  const [mobileOrderView, setMobileOrderView] = useState<'menu' | 'cart'>('menu')
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('cash')
   const [isPending, startTransition] = useTransition()
   const [nextOrderNo, setNextOrderNo] = useState(1)
@@ -356,6 +357,7 @@ export default function POSTerminal({
   const discountRupees = discountPaise / 100
   const finalTotalPaise = Math.max(0, subtotalPaise - discountPaise)
   const finalTotalRupees = finalTotalPaise / 100
+  const totalCartQty = useMemo(() => cart.reduce((sum, item) => sum + item.qty, 0), [cart])
 
   const isRelativeOrFree = (discountType === 'percent' && discountValue === 100) || (subtotalPaise > 0 && finalTotalPaise === 0)
 
@@ -830,8 +832,26 @@ export default function POSTerminal({
         {/* TAB 1: ORDER SCREEN (Screenshots 1 & 5) */}
         {activeTab === 'order' && (
           <div className="order-layout">
+            {/* Mobile Segmented Switch (<= 900px) */}
+            <div className="mobile-order-switch">
+              <button
+                type="button"
+                className={`m-switch-btn ${mobileOrderView === 'menu' ? 'active' : ''}`}
+                onClick={() => setMobileOrderView('menu')}
+              >
+                🍴 Menu &amp; Items
+              </button>
+              <button
+                type="button"
+                className={`m-switch-btn ${mobileOrderView === 'cart' ? 'active' : ''}`}
+                onClick={() => setMobileOrderView('cart')}
+              >
+                🛒 Cart {totalCartQty > 0 ? `(${totalCartQty}) · ₹${finalTotalRupees.toFixed(2)}` : '(0)'}
+              </button>
+            </div>
+
             {/* Left Area: Categories & Items Grid */}
-            <div className="order-left-panel">
+            <div className={`order-left-panel ${mobileOrderView === 'cart' ? 'mobile-hidden' : ''}`}>
               <div className="panel-header-row">
                 {selectedCategory && !searchQuery ? (
                   <div className="cat-crumb-row">
@@ -907,11 +927,35 @@ export default function POSTerminal({
                   )}
                 </div>
               )}
+
+              {/* Floating Mobile Cart Bar (visible on mobile in menu view when cart has items) */}
+              {cart.length > 0 && (
+                <div className="mobile-floating-cart-bar" onClick={() => setMobileOrderView('cart')}>
+                  <div className="m-cart-info">
+                    <span className="m-cart-badge">{totalCartQty}</span>
+                    <span className="m-cart-text">item{totalCartQty > 1 ? 's' : ''} in cart</span>
+                    <span className="m-cart-sep">•</span>
+                    <span className="m-cart-total">₹{finalTotalRupees.toFixed(2)}</span>
+                  </div>
+                  <div className="m-cart-action">
+                    <span>View Cart &amp; Pay</span>
+                    <span className="m-cart-arrow">→</span>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Right Area: Current Order Cart (Screenshots 1 & 5) */}
             {/* Right Area: Current Order Cart */}
-            <div className="order-right-panel">
+            <div className={`order-right-panel ${mobileOrderView === 'menu' ? 'mobile-hidden' : ''}`}>
+              {/* Mobile Back Button */}
+              <button
+                type="button"
+                className="mobile-back-to-menu-btn"
+                onClick={() => setMobileOrderView('menu')}
+              >
+                ← Back to Menu (+ Add Items)
+              </button>
+
               <div className="cart-top-bar">
                 <div className="cart-top-left">
                   <h2 className="cart-title">🛒 Current Order</h2>
@@ -3401,6 +3445,250 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
           white-space: pre;
           margin: 0;
           overflow-x: auto;
+        }
+
+        /* ─── Mobile Order Switch & Floating Cart Bar (Hidden on Desktop) ─── */
+        .mobile-order-switch {
+          display: none;
+        }
+        .mobile-floating-cart-bar {
+          display: none;
+        }
+        .mobile-back-to-menu-btn {
+          display: none;
+        }
+
+        /* ─── Responsive Mobile Styles (<= 900px) ─────────────────────────── */
+        @media screen and (max-width: 900px) {
+          .header-inner {
+            padding: 0.5rem 0.75rem;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+          }
+          .header-title {
+            font-size: 1.15rem;
+          }
+          .header-subtitle {
+            display: none;
+          }
+          .header-right {
+            gap: 0.45rem;
+            flex-wrap: wrap;
+          }
+          .header-admin-link,
+          .signout-btn {
+            padding: 0.3rem 0.55rem;
+            font-size: 0.72rem;
+          }
+          .user-name {
+            font-size: 0.78rem;
+          }
+
+          /* Tabs scroll smoothly on touch devices */
+          .nav-tabs-bar {
+            overflow-x: auto;
+            white-space: nowrap;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            padding: 0 0.5rem;
+          }
+          .nav-tabs-bar::-webkit-scrollbar {
+            display: none;
+          }
+          .nav-tab-btn {
+            flex: 0 0 auto;
+            padding: 0.55rem 0.85rem;
+            font-size: 0.8rem;
+          }
+
+          /* Body & Order screen */
+          .pos-body {
+            height: calc(100vh - 110px);
+            padding: 0.5rem;
+            max-width: 100%;
+          }
+          .order-layout {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
+            position: relative;
+            gap: 0.5rem;
+          }
+
+          /* Mobile Top Segmented Switch */
+          .mobile-order-switch {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.35rem;
+            background: #e2e8f0;
+            padding: 0.25rem;
+            border-radius: 0.5rem;
+            flex-shrink: 0;
+          }
+          .m-switch-btn {
+            padding: 0.5rem;
+            border: none;
+            border-radius: 0.4rem;
+            background: transparent;
+            color: #475569;
+            font-size: 0.82rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.15s;
+          }
+          .m-switch-btn.active {
+            background: #ffffff;
+            color: #b45309;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+          }
+
+          /* Panels in mobile view */
+          .order-left-panel {
+            flex: 1;
+            height: 100%;
+            padding: 0.75rem;
+            padding-bottom: 4.5rem; /* space for floating cart bar */
+            border-radius: 0.5rem;
+            position: relative;
+          }
+          .order-left-panel.mobile-hidden {
+            display: none !important;
+          }
+
+          .order-right-panel {
+            flex: 1;
+            height: 100%;
+            width: 100%;
+            max-width: 100%;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            overflow-y: auto;
+          }
+          .order-right-panel.mobile-hidden {
+            display: none !important;
+          }
+
+          /* Mobile Back to Menu button */
+          .mobile-back-to-menu-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            border-radius: 0.4rem;
+            padding: 0.5rem;
+            color: #b45309;
+            font-size: 0.82rem;
+            font-weight: 700;
+            cursor: pointer;
+            margin-bottom: 0.5rem;
+          }
+          .mobile-back-to-menu-btn:hover {
+            background: #e2e8f0;
+          }
+
+          /* Floating Mobile Cart Bar */
+          .mobile-floating-cart-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: absolute;
+            bottom: 0.75rem;
+            left: 0.75rem;
+            right: 0.75rem;
+            background: linear-gradient(135deg, #1e293b, #0f172a);
+            color: #ffffff;
+            padding: 0.65rem 1rem;
+            border-radius: 0.65rem;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.35);
+            cursor: pointer;
+            z-index: 40;
+            border: 1px solid #334155;
+            animation: slideUp 0.2s ease-out;
+          }
+          @keyframes slideUp {
+            from { transform: translateY(10px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+          }
+          .m-cart-info {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+          }
+          .m-cart-badge {
+            background: #f59e0b;
+            color: #0f172a;
+            font-weight: 800;
+            font-size: 0.78rem;
+            padding: 0.15rem 0.45rem;
+            border-radius: 0.35rem;
+          }
+          .m-cart-text {
+            font-size: 0.8rem;
+            color: #cbd5e1;
+            font-weight: 500;
+          }
+          .m-cart-sep {
+            color: #64748b;
+          }
+          .m-cart-total {
+            font-size: 0.95rem;
+            font-weight: 800;
+            color: #38bdf8;
+            font-family: 'Outfit', sans-serif;
+          }
+          .m-cart-action {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: #facc15;
+          }
+          .m-cart-arrow {
+            font-size: 1rem;
+          }
+
+          /* Categories & Items grids */
+          .categories-grid {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.5rem;
+          }
+          .category-tile {
+            padding: 0.85rem 0.5rem;
+            min-height: 75px;
+          }
+          .cat-name {
+            font-size: 0.9rem;
+          }
+
+          .items-grid {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.5rem;
+          }
+          .item-tile {
+            padding: 0.65rem;
+          }
+          .item-tile-name {
+            font-size: 0.85rem;
+          }
+          .item-tile-price {
+            font-size: 1rem;
+          }
+
+          /* Printer config grid */
+          .config-content-grid {
+            grid-template-columns: 1fr;
+          }
+
+          /* KOT Card on screen */
+          .kot-ticket-card {
+            width: 100%;
+            max-width: 100%;
+            margin: 0;
+          }
         }
       `}</style>
     </div>
