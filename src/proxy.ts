@@ -32,7 +32,10 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/auth') ||
     pathname.startsWith('/api/print-agent') ||
     pathname.startsWith('/_next') ||
-    pathname.startsWith('/favicon')
+    pathname.startsWith('/favicon') ||
+    pathname === '/manifest.json' ||
+    pathname === '/sw.js' ||
+    pathname.startsWith('/icons/')
 
   // Unauthenticated user trying to access a protected path → login
   if (!user && !isPublicPath) {
@@ -54,7 +57,7 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Skip Next.js internals and static files
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    // Skip Next.js internals, PWA files and static assets
+    '/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|icons/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|json|js)$).*)',
   ],
 }
