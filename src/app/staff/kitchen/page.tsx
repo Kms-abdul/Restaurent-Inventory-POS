@@ -130,19 +130,35 @@ export default async function KitchenPage({
           color: '#0f172a',
           boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
         }}>
-          <Link
-            href={ctx.isSuperAdmin ? '/super-admin/dashboard' : '/restaurant/dashboard'}
-            style={{
-              color: '#b45309',
-              textDecoration: 'none',
-              fontWeight: 700,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-            }}
-          >
-            ← Back to Admin Portal
-          </Link>
+          {(ctx.isSuperAdmin || (Boolean(ctx.restaurantId) && !ctx.branchId)) ? (
+            <Link
+              href={ctx.isSuperAdmin ? '/super-admin/dashboard' : '/restaurant/dashboard'}
+              style={{
+                color: '#b45309',
+                textDecoration: 'none',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+              }}
+            >
+              ← Back to Admin Portal
+            </Link>
+          ) : ctx.permissions.has('pos.create_order') ? (
+            <Link
+              href="/staff/pos"
+              style={{
+                color: '#b45309',
+                textDecoration: 'none',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+              }}
+            >
+              ← Back to POS
+            </Link>
+          ) : null}
 
           {branchesList.length > 1 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

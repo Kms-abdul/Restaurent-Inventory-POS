@@ -203,7 +203,7 @@ export default async function POSPage({
       menuItems={filteredMenuItems}
       canVoid={canVoid}
       canDiscount={canDiscount}
-      isAdmin={ctx.isSuperAdmin || !!ctx.restaurantId}
+      isAdmin={ctx.isSuperAdmin || (Boolean(ctx.restaurantId) && !ctx.branchId)}
     />
   )
 }

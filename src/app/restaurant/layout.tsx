@@ -8,7 +8,10 @@ export default async function RestaurantAdminLayout({ children }: { children: Re
   const ctx = await getUserContext()
 
   if (!ctx) redirect('/login')
-  if (!ctx.restaurantId || ctx.isSuperAdmin) redirect('/')
+  if (!ctx.restaurantId || ctx.isSuperAdmin || ctx.branchId) {
+    if (ctx.branchId) redirect('/staff/pos')
+    redirect('/')
+  }
 
   return (
     <div className="ra-root">

@@ -72,15 +72,12 @@ interface Props {
 }
 
 type PaymentMode = 'cash' | 'card' | 'upi'
-type ActiveTab = 'order' | 'menu' | 'kot' | 'kds' | 'reports' | 'staff' | 'printer'
+type ActiveTab = 'order' | 'kot' | 'kds' | 'printer'
 
 const POS_TABS: { id: ActiveTab; label: string; icon: string }[] = [
   { id: 'order', label: 'Order', icon: '📋' },
-  { id: 'menu', label: 'Menu', icon: '🍴' },
   { id: 'kot', label: 'KOT', icon: '🖨️' },
   { id: 'kds', label: 'Kitchen KDS', icon: '👨‍🍳' },
-  { id: 'reports', label: 'Reports', icon: '📊' },
-  { id: 'staff', label: 'Staff', icon: '👥' },
   { id: 'printer', label: 'Printer', icon: '⚙️' },
 ]
 
@@ -150,9 +147,8 @@ export default function POSTerminal({
     notes?: string
   } | null>(null)
 
-  // Orders list for KDS, KOT, and Reports
+  // Orders list for KDS and KOT
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([])
-  const [reportsDate, setReportsDate] = useState(new Date().toISOString().split('T')[0])
   const [autoPrintKOT, setAutoPrintKOT] = useState(true)
 
   // Tracks which individual order action is in-flight (for per-button loading states)
@@ -766,25 +762,7 @@ export default function POSTerminal({
     void loadOrders()
   }
 
-  // Reports calculations
-  const reportTotals = useMemo(() => {
-    let settledTotalPaise = 0
-    let cashTotalPaise = 0
 
-    recentOrders.forEach(o => {
-      if (o.status !== 'settled') return
-      const total = o.total_amount || 0
-      settledTotalPaise += total
-      if (o.payment_mode === 'cash') cashTotalPaise += total
-    })
-
-    const totalReportsRev = settledTotalPaise / 100
-    return {
-      totalReportsRev,
-      avgOrderRev: recentOrders.length > 0 ? totalReportsRev / recentOrders.length : 0,
-      cashTotal: cashTotalPaise / 100,
-    }
-  }, [recentOrders])
 
   return (
     <div className="pos-shell">
@@ -1779,198 +1757,7 @@ export default function POSTerminal({
           </div>
         )}
 
-        {/* TAB 4: REPORTS (Screenshot 4) */}
-        {activeTab === 'reports' && (
-          <div className="reports-tab-layout">
-            <div className="reports-top-bar">
-              <div className="date-picker-group">
-                <label>Business date</label>
-                <input
-                  type="date"
-                  value={reportsDate}
-                  onChange={e => setReportsDate(e.target.value)}
-                  className="reports-date-input"
-                />
-                <button type="button" onClick={loadOrders} className="reports-refresh-btn">
-                  Refresh
-                </button>
-              </div>
 
-              <div className="reports-action-buttons">
-                <button
-                  type="button"
-                  onClick={() => alert('Exporting orders to Excel...')}
-                  className="btn-export-excel"
-                >
-                  ⬇️ Export to Excel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => alert('Saved workbook successfully.')}
-                  className="btn-save-workbook"
-                >
-                  💾 Save workbook now
-                </button>
-              </div>
-            </div>
-
-            {/* 4 Colored KPI Cards */}
-            <div className="reports-kpi-grid">
-              <div className="report-kpi-card card-blue">
-                <div className="kpi-icon">📋</div>
-                <div className="kpi-num">{recentOrders.length}</div>
-                <div className="kpi-title">Orders</div>
-              </div>
-
-              <div className="report-kpi-card card-green">
-                <div className="kpi-icon">💰</div>
-                <div className="kpi-num">₹{reportTotals.totalReportsRev.toFixed(2)}</div>
-                <div className="kpi-title">Revenue</div>
-              </div>
-
-              <div className="report-kpi-card card-purple">
-                <div className="kpi-icon">📈</div>
-                <div className="kpi-num">₹{reportTotals.avgOrderRev.toFixed(2)}</div>
-                <div className="kpi-title">Average order</div>
-              </div>
-
-              <div className="report-kpi-card card-orange">
-                <div className="kpi-icon">💳</div>
-                <div className="kpi-num">cash: ₹{reportTotals.cashTotal.toFixed(2)}</div>
-                <div className="kpi-title">Payment Breakdown</div>
-              </div>
-            </div>
-
-            {/* Orders Table */}
-            <div className="reports-orders-panel">
-              <h3 className="orders-table-title">📊 Orders</h3>
-              <div className="table-responsive">
-                <table className="pos-data-table">
-                  <thead>
-                    <tr>
-                      <th>Order No</th>
-                      <th>Invoice</th>
-                      <th>Time</th>
-                      <th>Payment</th>
-                      <th>Cashier</th>
-                      <th>Items</th>
-                      <th>Total</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentOrders.length === 0 ? (
-                      <tr>
-                        <td colSpan={8} className="empty-table-td">No orders found for this date.</td>
-                      </tr>
-                    ) : (
-                      recentOrders.map(o => {
-                        const inv = `INV-${new Date(o.created_at).toISOString().slice(0, 10).replace(/-/g, '')}-${String(o.order_no).padStart(4, '0')}`
-                        return (
-                          <tr key={o.id}>
-                            <td className="td-bold">#{o.order_no}</td>
-                            <td className="td-mono">{inv}</td>
-                            <td className="td-muted">
-                              {new Date(o.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                            </td>
-                            <td className="td-badge">
-                              {o.total_amount === 0 ? '🎁 Free' : o.payment_mode || 'cash'}
-                            </td>
-                            <td>{o.profiles?.name || cashierName}</td>
-                            <td>{(o.order_items ?? []).reduce((s, i) => s + (i.qty || 1), 0)}</td>
-                            <td className="td-total">
-                              {o.total_amount === 0 ? (
-                                <span style={{ color: '#16a34a', fontWeight: 800 }}>₹0.00 (Free)</span>
-                              ) : (
-                                <span>₹{((o.total_amount || 0) / 100).toFixed(2)}</span>
-                              )}
-                              {(o.discount_amount ?? 0) > 0 && (
-                                <div style={{ fontSize: '0.72rem', color: '#16a34a', fontWeight: 600 }}>
-                                  Disc: ₹{((o.discount_amount ?? 0) / 100).toFixed(2)}
-                                </div>
-                              )}
-                            </td>
-                            <td className="td-actions">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  handlePrintReceipt({
-                                    order_no: o.order_no,
-                                    time: new Date(o.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase(),
-                                    cashier: o.profiles?.name || cashierName,
-                                    notes: o.notes || undefined,
-                                    items: (o.order_items || []).map(oi => ({
-                                      name: oi.item_name_at_sale || oi.item_name || 'Item',
-                                      qty: oi.qty ?? 1,
-                                    })),
-                                  })
-                                }}
-                                className="action-btn-print"
-                              >
-                                Print
-                              </button>
-                              {canVoid && o.status !== 'voided' && (
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    if (confirm(`Void order #${o.order_no}?`)) {
-                                      // Optimistic UI: mark voided immediately
-                                      setRecentOrders(prev =>
-                                        prev.map(ord => ord.id === o.id ? { ...ord, status: 'voided' } : ord)
-                                      )
-                                      try {
-                                        await voidOrder(o.id, 'Cashier request')
-                                      } catch (err) {
-                                        console.error('Void failed:', err)
-                                      }
-                                      // Refresh in background
-                                      void loadOrders()
-                                    }
-                                  }}
-                                  className="action-btn-void"
-                                >
-                                  Void
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        )
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 5: MENU SHORTCUT */}
-        {activeTab === 'menu' && (
-          <div className="shortcut-tab-layout">
-            <div className="shortcut-card">
-              <h2>🍴 Menu Management</h2>
-              <p>View and manage categories, menu items, prices, and branch availability.</p>
-              <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-                <Link href="/restaurant/menu" className="btn-primary">Go to Full Menu Admin →</Link>
-                <Link href="/restaurant/menu/items/new" className="btn-ghost">+ Add New Menu Item</Link>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 6: STAFF SHORTCUT */}
-        {activeTab === 'staff' && (
-          <div className="shortcut-tab-layout">
-            <div className="shortcut-card">
-              <h2>👥 Staff Management</h2>
-              <p>Manage branch cashiers, operators, chef accounts, and permissions.</p>
-              <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-                <Link href="/restaurant/users" className="btn-primary">View Staff List →</Link>
-                <Link href="/restaurant/users/invite" className="btn-ghost">+ Add Staff Member</Link>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* TAB 7: PRINTER CONFIGURATION */}
         {activeTab === 'printer' && (
