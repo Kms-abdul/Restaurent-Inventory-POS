@@ -3,6 +3,32 @@
 /* ─── Google Fonts ─────────────────────────────────────────────────────────── */
 /* Imported via layout.tsx <head> */
 
+/* ─── PWA / Mobile App Styles ──────────────────────────────────────────────── */
+/* Safe area handling for notch devices (iPhone X+, etc.) */
+html {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* Prevent pull-to-refresh in standalone mode */
+@media all and (display-mode: standalone) {
+  body {
+    overscroll-behavior-y: contain;
+  }
+}
+
+/* Prevent text selection on touch (app-like feel) */
+body {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+/* Prevent zoom on input focus on iOS */
+@media screen and (max-width: 768px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
 /* ─── Design Tokens ────────────────────────────────────────────────────────── */
 :root {
   /* Brand */

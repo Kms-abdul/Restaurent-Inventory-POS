@@ -44,6 +44,25 @@ const allowedDevOrigins = Array.from(
 const nextConfig: NextConfig = {
   /* config options here */
   allowedDevOrigins,
+
+  // PWA: Allow service worker to control the entire app
+  async headers() {
+    return [
+      {
+        source: '/sw.js',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'no-cache, no-store, must-revalidate',
+          },
+          {
+            key: 'Service-Worker-Allowed',
+            value: '/',
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
