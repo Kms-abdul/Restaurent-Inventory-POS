@@ -4,7 +4,7 @@ import { useState, useCallback, useTransition, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { CartItem } from '@/types/database'
-import { createPOSOrder, createKOTPrintJob, listOrders, updateFulfillmentStatus, voidOrder } from '@/app/actions/orders'
+import { createPOSOrder, createKOTOrder, holdOrder, addItemsToHeldOrder, checkoutHeldOrder, checkoutMultipleOrders, listOrders, updateFulfillmentStatus, voidOrder } from '@/app/actions/orders'
 import { printJobAction, getDiscoveredPrintersAction, printDirectToThermalPrinter } from '@/app/actions/print-direct'
 import type { ThermalOrderData } from '@/utils/thermal-printer'
 import { formatTicketText, type PrintTicketPayload } from '@/utils/receipt-formatter'
@@ -54,6 +54,18 @@ interface RecentOrder {
   fulfillment?: string | null
   order_items?: POSOrderItem[] | null
   profiles?: { name?: string | null } | null
+}
+
+// A pending order (sent to kitchen, not yet paid)
+interface PendingOrder {
+  id: string
+  order_no: number
+  created_at: string
+  type: 'takeaway' | 'dine-in'
+  table_label?: string  // only for dine-in
+  notes?: string
+  total_amount: number  // in paise
+  items: CartItem[]
 }
 
 interface Props {
@@ -162,6 +174,25 @@ export default function POSTerminal({
   const [isLoadingPrinters, setIsLoadingPrinters] = useState<boolean>(false)
   const [printerSaveSuccess, setPrinterSaveSuccess] = useState<boolean>(false)
   const [billingStatus, setBillingStatus] = useState<string | null>(null)
+
+  // ─── KOT / Dine-In / CHECKOUT state ──────────────────────────────────────
+  // Table label used for both KOT (takeaway ref) and Dine-In (table number)
+  const [tableLabel, setTableLabel] = useState<string>('')
+  // All pending (kitchen-sent, not yet billed) orders
+  const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([])
+  // Whether the pending orders panel is expanded
+  const [showPendingPanel, setShowPendingPanel] = useState<boolean>(false)
+  // Status feedback for the 3 action buttons
+  const [kotStatus, setKotStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle')
+  const [dineInStatus, setDineInStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle')
+  const [checkoutStatus, setCheckoutStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle')
+  // Checkout confirmation dialog: single takeaway order or a full dine-in table
+  const [checkoutTarget, setCheckoutTarget] = useState<{
+    type: 'single' | 'table'
+    orders: PendingOrder[]
+    tableLabel?: string
+    totalAmount: number  // paise
+  } | null>(null)
 
   // Printer Configuration Settings (Saved in LocalStorage)
   const [printerSettings, setPrinterSettings] = useState({
@@ -272,8 +303,45 @@ export default function POSTerminal({
       const orders = (await listOrders(branchId, { limit: 50 })) as RecentOrder[]
       setRecentOrders(orders || [])
       if (orders && orders.length > 0) {
-        const highestNo = Math.max(...orders.map(o => o.order_no || 0))
-        setNextOrderNo(highestNo + 1)
+        // Track order number day-by-day: only check today's orders so yesterday's count doesn't inflate today
+        const todayStr = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD in local time
+        const todayOrders = orders.filter(o => new Date(o.created_at).toLocaleDateString('en-CA') === todayStr)
+        if (todayOrders.length > 0) {
+          const highestNo = Math.max(...todayOrders.map(o => o.order_no || 0))
+          setNextOrderNo(highestNo + 1)
+        } else {
+          setNextOrderNo(1)
+        }
+
+        // Sync pending active orders from database so reload/refresh keeps them
+        const activeOrders = orders.filter(o => o.status === 'active')
+        const activePending: PendingOrder[] = activeOrders.map(o => {
+          let tbl = ''
+          if (o.notes) {
+            const match = o.notes.match(/\[([^\]]+)\]/) || o.notes.match(/^([^—|]+)—/)
+            if (match) tbl = match[1].trim()
+          }
+          const isDine = Boolean(tbl || o.notes?.includes('Round') || o.notes?.toLowerCase().includes('table'))
+          return {
+            id: o.id,
+            order_no: o.order_no,
+            created_at: o.created_at,
+            type: isDine ? 'dine-in' : 'takeaway',
+            table_label: tbl || undefined,
+            notes: o.notes || undefined,
+            total_amount: o.total_amount || 0,
+            items: (o.order_items || []).map(oi => ({
+              menuItemId: oi.menu_item_id ?? '',
+              name: oi.item_name_at_sale || oi.item_name || 'Item',
+              category: oi.category_at_sale || oi.category || '',
+              unitPrice: oi.unit_price_at_sale ?? oi.unit_price ?? 0,
+              qty: oi.qty ?? 1,
+              lineTotal: oi.line_total ?? 0,
+            })),
+          }
+        })
+        setPendingOrders(activePending)
+
         const latest = orders[0]
         setLastOrder(prev => prev ?? {
           order_no: latest.order_no,
@@ -294,6 +362,9 @@ export default function POSTerminal({
           payment_mode: latest.payment_mode || 'cash',
           notes: latest.notes || '',
         })
+      } else {
+        setNextOrderNo(1)
+        setPendingOrders([])
       }
     } catch (e) {
       console.error('Failed to load orders:', e)
@@ -415,10 +486,204 @@ export default function POSTerminal({
     }
   }
 
-  // Checkout submission
-  const handleCompleteBilling = () => {
-    if (cart.length === 0) return
+  // ─── Shared print helper ──────────────────────────────────────────────────
+  const triggerPrints = (printData: ThermalOrderData, type: 'KOT' | 'RECEIPT' | 'BOTH') => {
+    if ((type === 'KOT' || type === 'BOTH') && printerSettings.enableKotPrint) {
+      void printJobAction({
+        type: 'KOT',
+        data: printData,
+        printerName: printerSettings.printerName || 'POSIO QX300',
+        paperWidth: printerSettings.paperWidth || 48,
+      }).then(res => {
+        if (!res?.success && printerSettings.enableLocalBrowserPrint && typeof window !== 'undefined' && window.innerWidth > 900) {
+          window.print()
+        }
+      })
+    }
+    if ((type === 'RECEIPT' || type === 'BOTH') && printerSettings.enableReceiptPrint) {
+      const delayMs = (type === 'BOTH' && printerSettings.enableKotPrint) ? 500 : 0
+      setTimeout(() => {
+        void printJobAction({
+          type: 'RECEIPT',
+          data: printData,
+          printerName: printerSettings.printerName || 'POSIO QX300',
+          paperWidth: printerSettings.paperWidth || 48,
+        })
+      }, delayMs)
+    }
+  }
 
+  // ─── KOT handler (Takeaway) ───────────────────────────────────────────────
+  // Creates order, prints KOT to kitchen, and adds it to Pending Orders panel
+  // so the cashier can checkout later when the customer pays.
+  const handleKOT = () => {
+    if (cart.length === 0) return
+    setKotStatus('pending')
+    startTransition(async () => {
+      try {
+        const orderTime = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        let combinedNotes = orderNotes.trim()
+        if (discountPaise > 0) {
+          const discTag = discountReason.trim() || (isRelativeOrFree ? 'Relative (Free)' : `${discountValue}% Off`)
+          combinedNotes = combinedNotes ? `${combinedNotes} [${discTag}]` : `[${discTag}]`
+        }
+
+        const result = await createKOTOrder({
+          branchId,
+          restaurantId,
+          tableLabel: tableLabel.trim() || undefined,
+          notes: combinedNotes || undefined,
+          items: cart,
+          restaurantName: printerSettings.headerText || restaurantName,
+          branchName: printerSettings.tagline || branchName,
+          cashierName,
+        })
+
+        const printData: ThermalOrderData = {
+          orderNumber: result.order_no,
+          createdAt: new Date().toISOString(),
+          restaurantName: printerSettings.headerText || restaurantName || 'RESTAURANT',
+          branchName: printerSettings.tagline || branchName,
+          cashierName,
+          subtotal: subtotalRupees,
+          discount: 0,
+          total: subtotalRupees,
+          paymentMode: 'none',
+          items: cart.map(i => ({ name: i.name, quantity: i.qty, price: i.unitPrice / 100, lineTotal: i.lineTotal / 100 })),
+        }
+        triggerPrints(printData, 'KOT')
+
+        // Add to Pending Orders panel (takeaway — single checkout)
+        const newPending: PendingOrder = {
+          id: result.order_id,
+          order_no: result.order_no,
+          created_at: new Date().toISOString(),
+          type: 'takeaway',
+          table_label: tableLabel.trim() || undefined,
+          notes: combinedNotes || undefined,
+          total_amount: subtotalPaise,
+          items: [...cart],
+        }
+        setPendingOrders(prev => [newPending, ...prev])
+        setShowPendingPanel(true)
+
+        setLastOrder({
+          order_no: result.order_no,
+          invoice: `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(result.order_no).padStart(4, '0')}`,
+          subtotal: subtotalRupees,
+          discount: 0,
+          total: subtotalRupees,
+          items: [...cart],
+          time: orderTime,
+          payment_mode: 'none',
+          notes: combinedNotes,
+        })
+        setNextOrderNo(result.order_no + 1)
+        setCart([])
+        clearDiscount()
+        setOrderNotes('')
+        setTableLabel('')
+        setKotStatus('success')
+        setMobileOrderView('menu')
+        setTimeout(() => setKotStatus('idle'), 3000)
+        void loadOrders()
+      } catch (err: unknown) {
+        setKotStatus('error')
+        alert('KOT failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
+        setTimeout(() => setKotStatus('idle'), 3000)
+      }
+    })
+  }
+
+  // ─── Dine-In handler ─────────────────────────────────────────────────────
+  // Creates an order for a table, prints KOT (chef cooks now), and adds it to
+  // the Pending Orders panel grouped by table. Same table can have multiple
+  // rounds; all are collected in one payment at checkout.
+  const handleDineIn = () => {
+    if (cart.length === 0) return
+    const label = tableLabel.trim()
+    if (!label) {
+      alert('Please enter a table number for Dine-In orders (e.g. Table 1 or T1).')
+      return
+    }
+    setDineInStatus('pending')
+    startTransition(async () => {
+      try {
+        // Count existing rounds for this table
+        const existingRounds = pendingOrders.filter(
+          o => o.type === 'dine-in' && o.table_label === label
+        ).length
+        const roundNo = existingRounds + 1
+
+        let combinedNotes = orderNotes.trim()
+        if (discountPaise > 0) {
+          const discTag = discountReason.trim() || (isRelativeOrFree ? 'Relative (Free)' : `${discountValue}% Off`)
+          combinedNotes = combinedNotes ? `${combinedNotes} [${discTag}]` : `[${discTag}]`
+        }
+        const roundNote = `${label} — Round ${roundNo}${combinedNotes ? ` | ${combinedNotes}` : ''}`
+
+        const result = await holdOrder({
+          branchId,
+          restaurantId,
+          tableLabel: label,
+          notes: roundNote,
+          items: cart,
+          restaurantName: printerSettings.headerText || restaurantName,
+          branchName: printerSettings.tagline || branchName,
+          cashierName,
+        })
+
+        // KOT print shows table + round number so chef knows which table
+        const printData: ThermalOrderData = {
+          orderNumber: result.order_no,
+          createdAt: new Date().toISOString(),
+          restaurantName: printerSettings.headerText || restaurantName || 'RESTAURANT',
+          branchName: `${printerSettings.tagline || branchName} | ${label} — Round ${roundNo}`,
+          cashierName,
+          subtotal: subtotalRupees,
+          discount: 0,
+          total: subtotalRupees,
+          paymentMode: 'none',
+          items: cart.map(i => ({ name: i.name, quantity: i.qty, price: i.unitPrice / 100, lineTotal: i.lineTotal / 100 })),
+        }
+        triggerPrints(printData, 'KOT')
+
+        // Add to Pending Orders panel under the table group
+        const newPending: PendingOrder = {
+          id: result.order_id,
+          order_no: result.order_no,
+          created_at: new Date().toISOString(),
+          type: 'dine-in',
+          table_label: label,
+          notes: roundNote,
+          total_amount: subtotalPaise,
+          items: [...cart],
+        }
+        setPendingOrders(prev => [newPending, ...prev])
+        setShowPendingPanel(true)
+
+        setNextOrderNo(result.order_no + 1)
+        setCart([])
+        clearDiscount()
+        setOrderNotes('')
+        // Keep tableLabel so next round is for the same table by default
+        setDineInStatus('success')
+        setMobileOrderView('menu')
+        setTimeout(() => setDineInStatus('idle'), 3000)
+        void loadOrders()
+      } catch (err: unknown) {
+        setDineInStatus('error')
+        alert('Dine-In failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
+        setTimeout(() => setDineInStatus('idle'), 3000)
+      }
+    })
+  }
+
+  // ─── CHECKOUT from current cart (no prior KOT/HOLD) ──────────────────────
+  // Directly creates + settles an order in one step (like old Complete Billing).
+  const handleCheckoutFromCart = () => {
+    if (cart.length === 0) return
+    setCheckoutStatus('pending')
     startTransition(async () => {
       try {
         const orderTime = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -453,14 +718,13 @@ export default function POSTerminal({
           notes: combinedNotes,
         }
 
-        // Update UI immediately — don't block on loadOrders()
         setLastOrder(createdOrder)
         setNextOrderNo(result.order_no + 1)
         setCart([])
         clearDiscount()
         setOrderNotes('')
+        setTableLabel('')
 
-        // Auto-print directly to local Windows thermal printer based on print preferences
         const printData: ThermalOrderData = {
           orderNumber: result.order_no,
           createdAt: new Date().toISOString(),
@@ -478,47 +742,104 @@ export default function POSTerminal({
             lineTotal: i.lineTotal ? i.lineTotal / 100 : undefined,
           })),
         }
+        triggerPrints(printData, 'BOTH')
 
-        if (printerSettings.enableKotPrint) {
-          void printJobAction({
-            type: 'KOT',
-            data: printData,
-            printerName: printerSettings.printerName || 'POSIO QX300',
-            paperWidth: printerSettings.paperWidth || 48,
-          }).then(res => {
-            if (!res?.success && printerSettings.enableLocalBrowserPrint && typeof window !== 'undefined' && window.innerWidth > 900) {
-              window.print()
-            }
-          })
-        }
-
-        if (printerSettings.enableReceiptPrint) {
-          const delayMs = printerSettings.enableKotPrint ? 500 : 0
-          setTimeout(() => {
-            void printJobAction({
-              type: 'RECEIPT',
-              data: printData,
-              printerName: printerSettings.printerName || 'POSIO QX300',
-              paperWidth: printerSettings.paperWidth || 48,
-            }).then(res => {
-              if (!res?.success && !printerSettings.enableKotPrint && printerSettings.enableLocalBrowserPrint && typeof window !== 'undefined' && window.innerWidth > 900) {
-                window.print()
-              }
-            })
-          }, delayMs)
-        }
-
+        setCheckoutStatus('success')
         setBillingStatus('success')
         setMobileOrderView('menu')
-        setTimeout(() => setBillingStatus(null), 3000)
-
-        // Refresh order list in background — UI already updated above
+        setTimeout(() => { setCheckoutStatus('idle'); setBillingStatus(null) }, 3000)
         void loadOrders()
       } catch (err: unknown) {
-        alert('Order failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
+        setCheckoutStatus('error')
+        alert('Checkout failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
+        setTimeout(() => setCheckoutStatus('idle'), 3000)
       }
     })
   }
+
+  // ─── CHECKOUT pending orders (single takeaway OR full dine-in table) ───────
+  const handleCheckoutPending = () => {
+    if (!checkoutTarget) return
+    setCheckoutStatus('pending')
+    startTransition(async () => {
+      try {
+        const { orders, totalAmount } = checkoutTarget
+        const isZero = totalAmount === 0
+        const mode = isZero ? 'cash' : paymentMode
+
+        if (checkoutTarget.type === 'single') {
+          // Single takeaway order
+          await checkoutHeldOrder({
+            orderId: orders[0].id,
+            paymentMode: mode,
+            totalAmount,
+          })
+          setPendingOrders(prev => prev.filter(o => o.id !== orders[0].id))
+        } else {
+          // All rounds for a dine-in table
+          await checkoutMultipleOrders({
+            orderIds: orders.map(o => o.id),
+            paymentMode: mode,
+            totalAmount,
+          })
+          // Remove all orders that belonged to this table
+          setPendingOrders(prev =>
+            prev.filter(o => !(o.type === 'dine-in' && o.table_label === checkoutTarget.tableLabel))
+          )
+        }
+
+        // Build all items for the receipt (merged across rounds)
+        const allItems = orders.flatMap(o => o.items)
+        const printData: ThermalOrderData = {
+          orderNumber: orders[0].order_no,
+          createdAt: new Date().toISOString(),
+          restaurantName: printerSettings.headerText || restaurantName || 'RESTAURANT',
+          branchName: checkoutTarget.tableLabel
+            ? `${printerSettings.tagline || branchName} | ${checkoutTarget.tableLabel}`
+            : printerSettings.tagline || branchName,
+          cashierName,
+          subtotal: totalAmount / 100,
+          discount: 0,
+          total: totalAmount / 100,
+          paymentMode: isZero ? 'Complimentary' : paymentMode,
+          items: allItems.map(i => ({ name: i.name, quantity: i.qty, price: i.unitPrice / 100, lineTotal: i.lineTotal / 100 })),
+        }
+        triggerPrints(printData, 'RECEIPT')
+
+        setCheckoutTarget(null)
+        setCheckoutStatus('success')
+        setTimeout(() => setCheckoutStatus('idle'), 3000)
+        void loadOrders()
+      } catch (err: unknown) {
+        setCheckoutStatus('error')
+        alert('Checkout failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
+        setTimeout(() => setCheckoutStatus('idle'), 3000)
+      }
+    })
+  }
+
+  // Legacy alias
+  const handleCompleteBilling = handleCheckoutFromCart
+
+  // ─── Derived: group pending orders for the panel ──────────────────────────
+  const takeawayPending = useMemo(
+    () => pendingOrders.filter(o => o.type === 'takeaway'),
+    [pendingOrders]
+  )
+
+  const dineInByTable = useMemo(() => {
+    const groups: Record<string, PendingOrder[]> = {}
+    pendingOrders
+      .filter(o => o.type === 'dine-in')
+      .forEach(o => {
+        const key = o.table_label || 'Unknown Table'
+        if (!groups[key]) groups[key] = []
+        groups[key].push(o)
+      })
+    return groups
+  }, [pendingOrders])
+
+  const hasPending = pendingOrders.length > 0
 
   // Print ticket target state for thermal printer
   const [ticketToPrint, setTicketToPrint] = useState<{
@@ -1192,30 +1513,172 @@ export default function POSTerminal({
                       </div>
                     </div>
 
-                    <div className="action-buttons-column">
+                    {/* ── Table picker + Order-type label ──────── */}
+                    <div className="table-label-row">
+                      <div className="table-quick-picker">
+                        {['T1','T2','T3','T4','T5','T6','T7','T8'].map(t => (
+                          <button
+                            key={t}
+                            type="button"
+                            className={`table-quick-btn ${tableLabel === t ? 'active' : ''}`}
+                            onClick={() => setTableLabel(prev => prev === t ? '' : t)}
+                          >{t}</button>
+                        ))}
+                      </div>
+                      <input
+                        type="text"
+                        value={tableLabel}
+                        onChange={e => setTableLabel(e.target.value)}
+                        placeholder="Table / Name (for Dine-In, optional for Takeaway)"
+                        className="table-label-input"
+                        maxLength={40}
+                      />
+                    </div>
+
+                    {/* ── 3-Action Button Row ───────────────────── */}
+                    <div className="action-3btn-row">
+                      {/* KOT — Takeaway */}
                       <button
                         type="button"
                         disabled={cart.length === 0 || isPending}
-                        onClick={handleCompleteBilling}
-                        className={`btn-complete-billing ${billingStatus === 'success' ? 'btn-complete-success' : ''} ${finalTotalRupees === 0 && cart.length > 0 ? 'btn-complete-zero' : ''}`}
+                        onClick={handleKOT}
+                        className={`btn-action-kot ${kotStatus === 'success' ? 'btn-action-success' : ''}`}
+                        title="Takeaway: send to kitchen & add to pending list for checkout later."
                       >
-                        {isPending
-                          ? (printerSettings.enableKotPrint || printerSettings.enableReceiptPrint ? '⏳ Processing & Printing...' : 'Processing...')
-                          : billingStatus === 'success'
-                            ? '✅ Order Completed & Printed!'
-                            : finalTotalRupees === 0 && cart.length > 0
-                              ? '👑 Settle Free Order (₹0.00)'
-                              : '💰 Complete Billing'}
+                        {kotStatus === 'pending' ? '⏳' : kotStatus === 'success' ? '✅' : '🖨️'}
+                        <span>{kotStatus === 'success' ? 'Sent!' : 'KOT'}</span>
                       </button>
 
+                      {/* Dine-In */}
                       <button
                         type="button"
-                        onClick={clearCart}
-                        className="btn-clear-order"
+                        disabled={cart.length === 0 || isPending}
+                        onClick={handleDineIn}
+                        className={`btn-action-hold ${dineInStatus === 'success' ? 'btn-action-success' : ''}`}
+                        title="Dine-In: send to kitchen under table, pay at end."
                       >
-                        Clear order
+                        {dineInStatus === 'pending' ? '⏳' : dineInStatus === 'success' ? '✅' : '🍽️'}
+                        <span>{dineInStatus === 'success' ? 'Added!' : 'Dine-In'}</span>
+                      </button>
+
+                      {/* Checkout (direct from cart) */}
+                      <button
+                        type="button"
+                        disabled={cart.length === 0 || isPending}
+                        onClick={handleCheckoutFromCart}
+                        className={`btn-action-checkout ${checkoutStatus === 'success' ? 'btn-action-success' : ''} ${finalTotalRupees === 0 && cart.length > 0 ? 'btn-action-checkout-zero' : ''}`}
+                        title="Collect payment and finalise immediately."
+                      >
+                        {checkoutStatus === 'pending' ? '⏳' : checkoutStatus === 'success' ? '✅' : finalTotalRupees === 0 && cart.length > 0 ? '👑' : '✅'}
+                        <span>{checkoutStatus === 'success' ? 'Done!' : finalTotalRupees === 0 && cart.length > 0 ? 'Free' : 'Checkout'}</span>
                       </button>
                     </div>
+
+                    <button type="button" onClick={clearCart} className="btn-clear-order">Clear order</button>
+
+                    {/* ── Pending Orders Panel ──────────────────── */}
+                    {hasPending && (
+                      <div className="hold-tray-section">
+                        <button
+                          type="button"
+                          className="hold-tray-toggle"
+                          onClick={() => setShowPendingPanel(p => !p)}
+                        >
+                          <span>📋 Pending Orders</span>
+                          <span className="hold-tray-count">{pendingOrders.length}</span>
+                          <span style={{ marginLeft: 'auto', fontSize: '0.75rem' }}>{showPendingPanel ? '▲' : '▼'}</span>
+                        </button>
+
+                        {showPendingPanel && (
+                          <div className="hold-tray-list">
+
+                            {/* Takeaway orders — each can be checked out individually */}
+                            {takeawayPending.length > 0 && (
+                              <>
+                                <div className="pending-section-label">🏃 Takeaway</div>
+                                {takeawayPending.map(order => (
+                                  <div key={order.id} className="held-order-card">
+                                    <div className="held-order-header">
+                                      <span className="held-order-num">#{order.order_no}</span>
+                                      {order.table_label && <span className="held-order-table">📝 {order.table_label}</span>}
+                                      <span className="held-order-time">
+                                        {new Date(order.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                      </span>
+                                    </div>
+                                    <div className="held-order-items-preview">
+                                      {order.items.slice(0, 3).map((it, i) => (
+                                        <span key={i} className="held-item-chip">{it.name} ×{it.qty}</span>
+                                      ))}
+                                      {order.items.length > 3 && <span className="held-item-chip">+{order.items.length - 3} more</span>}
+                                    </div>
+                                    <div className="held-order-total">₹{(order.total_amount / 100).toFixed(2)}</div>
+                                    <div className="held-order-actions">
+                                      <button
+                                        type="button"
+                                        className="btn-held-checkout"
+                                        onClick={() => setCheckoutTarget({ type: 'single', orders: [order], totalAmount: order.total_amount })}
+                                        disabled={isPending}
+                                      >
+                                        💳 Checkout
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </>
+                            )}
+
+                            {/* Dine-In tables — all rounds grouped, paid together */}
+                            {Object.keys(dineInByTable).length > 0 && (
+                              <>
+                                <div className="pending-section-label">🍽️ Dine-In Tables</div>
+                                {Object.entries(dineInByTable).map(([table, orders]) => {
+                                  const tableTotal = orders.reduce((s, o) => s + o.total_amount, 0)
+                                  return (
+                                    <div key={table} className="held-order-card held-order-card-table">
+                                      <div className="held-order-header">
+                                        <span className="held-order-num">🪑 {table}</span>
+                                        <span className="held-order-table">{orders.length} round{orders.length > 1 ? 's' : ''}</span>
+                                        <span className="held-order-time">
+                                          {new Date(orders[0].created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                      </div>
+                                      {/* Show each round */}
+                                      {orders.map((o, ri) => (
+                                        <div key={o.id} className="dine-round-row">
+                                          <span className="dine-round-label">Round {ri + 1} #{o.order_no}</span>
+                                          <div className="held-order-items-preview" style={{ flex: 1 }}>
+                                            {o.items.slice(0, 2).map((it, i) => (
+                                              <span key={i} className="held-item-chip">{it.name} ×{it.qty}</span>
+                                            ))}
+                                            {o.items.length > 2 && <span className="held-item-chip">+{o.items.length - 2}</span>}
+                                          </div>
+                                          <span className="dine-round-amt">₹{(o.total_amount / 100).toFixed(0)}</span>
+                                        </div>
+                                      ))}
+                                      <div className="held-order-total" style={{ borderTop: '1px dashed #c7d2fe', paddingTop: '0.3rem', marginTop: '0.2rem' }}>
+                                        Grand Total: ₹{(tableTotal / 100).toFixed(2)}
+                                      </div>
+                                      <div className="held-order-actions">
+                                        <button
+                                          type="button"
+                                          className="btn-held-checkout"
+                                          style={{ width: '100%' }}
+                                          onClick={() => setCheckoutTarget({ type: 'table', orders, tableLabel: table, totalAmount: tableTotal })}
+                                          disabled={isPending}
+                                        >
+                                          💳 Checkout {table}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </>
+                            )}
+
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1568,27 +2031,212 @@ export default function POSTerminal({
                         )}
                       </div>
 
-                      {/* Complete Billing Button */}
-                      <button
-                        type="button"
-                        disabled={isPending}
-                        onClick={handleCompleteBilling}
-                        className={`btn-complete-billing ${billingStatus === 'success' ? 'btn-complete-success' : ''}`}
-                        style={{ width: '100%', marginTop: '0.35rem', padding: '0.75rem' }}
-                      >
-                        {isPending
-                          ? '⏳ Processing...'
-                          : billingStatus === 'success'
-                            ? '✅ Order Placed & Printed!'
-                            : finalTotalRupees === 0
-                              ? '👑 Settle Free Order (₹0.00)'
-                              : `💰 Complete Billing (₹${finalTotalRupees.toFixed(2)})`}
-                      </button>
+                      {/* Table / Customer Label */}
+                      <div className="table-quick-chips" style={{ marginBottom: '0.35rem' }}>
+                        {['T1', 'T2', 'T3', 'T4', 'T5', 'T6'].map(t => (
+                          <button
+                            key={t}
+                            type="button"
+                            className={`table-quick-btn ${tableLabel === t ? 'active' : ''}`}
+                            onClick={() => setTableLabel(prev => prev === t ? '' : t)}
+                          >{t}</button>
+                        ))}
+                      </div>
+                      <input
+                        type="text"
+                        value={tableLabel}
+                        onChange={e => setTableLabel(e.target.value)}
+                        placeholder="Table / Name (for Dine-In, optional for Takeaway)"
+                        className="table-label-input"
+                        style={{ width: '100%', marginBottom: '0.4rem' }}
+                        maxLength={40}
+                      />
+
+                      {/* ── 3-Action Button Row (Mobile) ────────────── */}
+                      <div className="action-3btn-row">
+                        <button
+                          type="button"
+                          disabled={cart.length === 0 || isPending}
+                          onClick={handleKOT}
+                          className={`btn-action-kot ${kotStatus === 'success' ? 'btn-action-success' : ''}`}
+                        >
+                          {kotStatus === 'pending' ? '⏳' : kotStatus === 'success' ? '✅' : '🖨️'}
+                          <span>{kotStatus === 'success' ? 'Sent!' : 'KOT'}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={cart.length === 0 || isPending}
+                          onClick={handleDineIn}
+                          className={`btn-action-hold ${dineInStatus === 'success' ? 'btn-action-success' : ''}`}
+                        >
+                          {dineInStatus === 'pending' ? '⏳' : dineInStatus === 'success' ? '✅' : '🍽️'}
+                          <span>{dineInStatus === 'success' ? 'Added!' : 'Dine-In'}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={cart.length === 0 || isPending}
+                          onClick={handleCheckoutFromCart}
+                          className={`btn-action-checkout ${checkoutStatus === 'success' ? 'btn-action-success' : ''} ${finalTotalRupees === 0 && cart.length > 0 ? 'btn-action-checkout-zero' : ''}`}
+                        >
+                          {checkoutStatus === 'pending' ? '⏳' : checkoutStatus === 'success' ? '✅' : finalTotalRupees === 0 && cart.length > 0 ? '👑' : '✅'}
+                          <span>{checkoutStatus === 'success' ? 'Done!' : finalTotalRupees === 0 && cart.length > 0 ? 'Free' : 'Checkout'}</span>
+                        </button>
+                      </div>
+
+                      {/* Pending Orders (mobile) */}
+                      {hasPending && (
+                        <div className="hold-tray-section" style={{ marginTop: '0.5rem' }}>
+                          <button
+                            type="button"
+                            className="hold-tray-toggle"
+                            onClick={() => setShowPendingPanel(p => !p)}
+                          >
+                            <span>📋 Pending Orders</span>
+                            <span className="hold-tray-count">{pendingOrders.length}</span>
+                            <span style={{ marginLeft: 'auto', fontSize: '0.75rem' }}>{showPendingPanel ? '▲' : '▼'}</span>
+                          </button>
+
+                          {showPendingPanel && (
+                            <div className="hold-tray-list">
+                              {/* Takeaway */}
+                              {takeawayPending.length > 0 && (
+                                <>
+                                  <div className="pending-section-label">🏃 Takeaway</div>
+                                  {takeawayPending.map(order => (
+                                    <div key={order.id} className="held-order-card">
+                                      <div className="held-order-header">
+                                        <span className="held-order-num">#{order.order_no}</span>
+                                        {order.table_label && <span className="held-order-table">📝 {order.table_label}</span>}
+                                        <span className="held-order-time">
+                                          {new Date(order.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                      </div>
+                                      <div className="held-order-items-preview">
+                                        {order.items.slice(0, 3).map((it, i) => (
+                                          <span key={i} className="held-item-chip">{it.name} ×{it.qty}</span>
+                                        ))}
+                                        {order.items.length > 3 && <span className="held-item-chip">+{order.items.length - 3}</span>}
+                                      </div>
+                                      <div className="held-order-total">₹{(order.total_amount / 100).toFixed(2)}</div>
+                                      <div className="held-order-actions">
+                                        <button
+                                          type="button"
+                                          className="btn-held-checkout"
+                                          onClick={() => setCheckoutTarget({ type: 'single', orders: [order], totalAmount: order.total_amount })}
+                                          disabled={isPending}
+                                        >
+                                          💳 Checkout
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </>
+                              )}
+
+                              {/* Dine-In Tables */}
+                              {Object.keys(dineInByTable).length > 0 && (
+                                <>
+                                  <div className="pending-section-label">🍽️ Dine-In Tables</div>
+                                  {Object.entries(dineInByTable).map(([table, orders]) => {
+                                    const tableTotal = orders.reduce((s, o) => s + o.total_amount, 0)
+                                    return (
+                                      <div key={table} className="held-order-card held-order-card-table">
+                                        <div className="held-order-header">
+                                          <span className="held-order-num">🪑 {table}</span>
+                                          <span className="held-order-table">{orders.length} round{orders.length > 1 ? 's' : ''}</span>
+                                          <span className="held-order-time">
+                                            {new Date(orders[0].created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                          </span>
+                                        </div>
+                                        {orders.map((o, ri) => (
+                                          <div key={o.id} className="dine-round-row">
+                                            <span className="dine-round-label">R{ri + 1} #{o.order_no}</span>
+                                            <div className="held-order-items-preview" style={{ flex: 1 }}>
+                                              {o.items.slice(0, 2).map((it, i) => (
+                                                <span key={i} className="held-item-chip">{it.name} ×{it.qty}</span>
+                                              ))}
+                                              {o.items.length > 2 && <span className="held-item-chip">+{o.items.length - 2}</span>}
+                                            </div>
+                                            <span className="dine-round-amt">₹{(o.total_amount / 100).toFixed(0)}</span>
+                                          </div>
+                                        ))}
+                                        <div className="held-order-total" style={{ borderTop: '1px dashed #c7d2fe', paddingTop: '0.3rem', marginTop: '0.2rem' }}>
+                                          Grand Total: ₹{(tableTotal / 100).toFixed(2)}
+                                        </div>
+                                        <div className="held-order-actions">
+                                          <button
+                                            type="button"
+                                            className="btn-held-checkout"
+                                            style={{ width: '100%' }}
+                                            onClick={() => setCheckoutTarget({ type: 'table', orders, tableLabel: table, totalAmount: tableTotal })}
+                                            disabled={isPending}
+                                          >
+                                            💳 Checkout {table}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
               )}
             </div>
+
+            {/* ── Shared Checkout Confirmation Dialog (Desktop & Mobile) ──────────── */}
+            {checkoutTarget && (
+              <div className="checkout-overlay">
+                <div className="checkout-dialog">
+                  <div className="checkout-dialog-title">
+                    {checkoutTarget.type === 'table'
+                      ? `💳 Checkout — ${checkoutTarget.tableLabel}`
+                      : `💳 Checkout — Order #${checkoutTarget.orders[0]?.order_no}`}
+                  </div>
+                  {checkoutTarget.type === 'table' && (
+                    <div className="checkout-dialog-table">
+                      {checkoutTarget.orders.length} round{checkoutTarget.orders.length > 1 ? 's' : ''} combined
+                    </div>
+                  )}
+                  <div className="checkout-dialog-total">
+                    Total: <strong>₹{(checkoutTarget.totalAmount / 100).toFixed(2)}</strong>
+                  </div>
+                  <div className="checkout-dialog-items">
+                    {checkoutTarget.orders.flatMap((o, ri) =>
+                      o.items.map((it, i) => (
+                        <div key={`${ri}-${i}`}>
+                          {checkoutTarget.type === 'table' && <span style={{ color: '#6366f1', fontSize: '0.75rem', marginRight: '0.3rem' }}>R{ri+1}</span>}
+                          {it.name} ×{it.qty} — ₹{(it.lineTotal / 100).toFixed(2)}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div className="payment-buttons-grid" style={{ margin: '0.75rem 0' }}>
+                    <button type="button" onClick={() => setPaymentMode('cash')} className={`payment-btn ${paymentMode === 'cash' ? 'active' : ''}`}>💵 Cash</button>
+                    <button type="button" onClick={() => setPaymentMode('card')} className={`payment-btn ${paymentMode === 'card' ? 'active' : ''}`}>💳 Card</button>
+                    <button type="button" onClick={() => setPaymentMode('upi')} className={`payment-btn ${paymentMode === 'upi' ? 'active' : ''}`}>📱 UPI</button>
+                  </div>
+                  <div className="checkout-dialog-btns">
+                    <button type="button" className="btn-dialog-cancel" onClick={() => setCheckoutTarget(null)}>Cancel</button>
+                    <button
+                      type="button"
+                      className="btn-dialog-confirm"
+                      disabled={checkoutStatus === 'pending'}
+                      onClick={handleCheckoutPending}
+                    >
+                      {checkoutStatus === 'pending' ? '⏳ Processing...' : '✅ Confirm & Print Receipt'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
