@@ -7,7 +7,7 @@ import type { CartItem } from '@/types/database'
 import { createPOSOrder, createKOTPrintJob, listOrders, updateFulfillmentStatus, voidOrder } from '@/app/actions/orders'
 import { printJobAction, getDiscoveredPrintersAction, printDirectToThermalPrinter } from '@/app/actions/print-direct'
 import type { ThermalOrderData } from '@/utils/thermal-printer'
-import { formatTicketText, type PrintTicketPayload } from '@/utils/receipt-formatter' 
+import { formatTicketText, type PrintTicketPayload } from '@/utils/receipt-formatter'
 
 interface Category {
   id: string
@@ -192,7 +192,7 @@ export default function POSTerminal({
           enableLocalBrowserPrint: parsed.enableLocalBrowserPrint === true,
         }))
       }
-    } catch {}
+    } catch { }
   }, [])
 
   const refreshPrinters = useCallback(async () => {
@@ -228,7 +228,7 @@ export default function POSTerminal({
       const next = { ...prev, ...updates }
       try {
         localStorage.setItem('pos_printer_settings', JSON.stringify(next))
-      } catch {}
+      } catch { }
       return next
     })
   }
@@ -276,24 +276,24 @@ export default function POSTerminal({
         setNextOrderNo(highestNo + 1)
         const latest = orders[0]
         setLastOrder(prev => prev ?? {
-            order_no: latest.order_no,
-            invoice: `INV-${new Date(latest.created_at).toISOString().slice(0, 10).replace(/-/g, '')}-${String(latest.order_no).padStart(4, '0')}`,
-            subtotal: ((latest.total_amount || 0) + (latest.discount_amount || 0)) / 100,
-            discount: (latest.discount_amount || 0) / 100,
-            discount_reason: latest.notes || '',
-            total: (latest.total_amount || 0) / 100,
-            items: (latest.order_items || []).map(oi => ({
-              menuItemId: oi.menu_item_id ?? '',
-              name: oi.item_name_at_sale || oi.item_name || 'Item',
-              category: oi.category_at_sale || oi.category || '',
-              unitPrice: oi.unit_price_at_sale ?? oi.unit_price ?? 0,
-              qty: oi.qty ?? 1,
-              lineTotal: oi.line_total ?? 0,
-            })),
-            time: new Date(latest.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-            payment_mode: latest.payment_mode || 'cash',
-            notes: latest.notes || '',
-          })
+          order_no: latest.order_no,
+          invoice: `INV-${new Date(latest.created_at).toISOString().slice(0, 10).replace(/-/g, '')}-${String(latest.order_no).padStart(4, '0')}`,
+          subtotal: ((latest.total_amount || 0) + (latest.discount_amount || 0)) / 100,
+          discount: (latest.discount_amount || 0) / 100,
+          discount_reason: latest.notes || '',
+          total: (latest.total_amount || 0) / 100,
+          items: (latest.order_items || []).map(oi => ({
+            menuItemId: oi.menu_item_id ?? '',
+            name: oi.item_name_at_sale || oi.item_name || 'Item',
+            category: oi.category_at_sale || oi.category || '',
+            unitPrice: oi.unit_price_at_sale ?? oi.unit_price ?? 0,
+            qty: oi.qty ?? 1,
+            lineTotal: oi.line_total ?? 0,
+          })),
+          time: new Date(latest.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          payment_mode: latest.payment_mode || 'cash',
+          notes: latest.notes || '',
+        })
       }
     } catch (e) {
       console.error('Failed to load orders:', e)
@@ -879,50 +879,53 @@ export default function POSTerminal({
                     />
                   </div>
 
-                  {/* View 1: Root Categories Grid (Screenshot 1) */}
-                  {!selectedCategory && !searchQuery.trim() ? (
-                    <div className="categories-grid">
-                      {categories.map(cat => (
-                        <div
-                          key={cat.id}
-                          onClick={() => setSelectedCategory(cat.id)}
-                          className="category-tile"
-                        >
-                          <div className="cat-name">{cat.name}</div>
-                          <div className="cat-count">{categoryItemCounts.get(cat.id) ?? 0} items</div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    /* View 2: Items Grid in Category or Search (Screenshot 5) */
-                    <div className="items-grid">
-                      {searchFilteredItems.length === 0 ? (
-                        <div className="empty-items-msg">No items found for this branch.</div>
-                      ) : (
-                        searchFilteredItems.map(item => {
-                          const cat = categoryById.get(item.category_id)
-                          return (
-                            <div key={item.id} className="item-tile">
-                              <div className="item-tile-name">{item.name}</div>
-                              <div className="item-tile-cat">{cat?.name ?? ''}</div>
-                              <div className="item-tile-footer">
-                                <span className="item-tile-price">
-                                  ₹{(item.price / 100).toFixed(2)}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => addToCart(item)}
-                                  className="item-tile-add-btn"
-                                >
-                                  +
-                                </button>
+                  {/* Scrollable Container for Categories and Items */}
+                  <div className="order-content-scroll">
+                    {/* View 1: Root Categories Grid (Screenshot 1) */}
+                    {!selectedCategory && !searchQuery.trim() ? (
+                      <div className="categories-grid">
+                        {categories.map(cat => (
+                          <div
+                            key={cat.id}
+                            onClick={() => setSelectedCategory(cat.id)}
+                            className="category-tile"
+                          >
+                            <div className="cat-name">{cat.name}</div>
+                            <div className="cat-count">{categoryItemCounts.get(cat.id) ?? 0} items</div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      /* View 2: Items Grid in Category or Search (Screenshot 5) */
+                      <div className="items-grid">
+                        {searchFilteredItems.length === 0 ? (
+                          <div className="empty-items-msg">No items found for this branch.</div>
+                        ) : (
+                          searchFilteredItems.map(item => {
+                            const cat = categoryById.get(item.category_id)
+                            return (
+                              <div key={item.id} className="item-tile">
+                                <div className="item-tile-name">{item.name}</div>
+                                <div className="item-tile-cat">{cat?.name ?? ''}</div>
+                                <div className="item-tile-footer">
+                                  <span className="item-tile-price">
+                                    ₹{(item.price / 100).toFixed(2)}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => addToCart(item)}
+                                    className="item-tile-add-btn"
+                                  >
+                                    +
+                                  </button>
+                                </div>
                               </div>
-                            </div>
-                          )
-                        })
-                      )}
-                    </div>
-                  )}
+                            )
+                          })
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Right Area: Current Order Cart */}
@@ -1586,8 +1589,8 @@ export default function POSTerminal({
                 </div>
               )}
             </div>
-        </div>
-      )}
+          </div>
+        )}
 
         {/* TAB 2: KOT SCREEN */}
         {activeTab === 'kot' && (
@@ -2118,30 +2121,49 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
         }
 
         /* Order Screen Layout */
+        .order-tab-wrapper {
+          height: 100%;
+          max-height: 100%;
+          min-height: 0;
+          display: flex;
+          flex-direction: column;
+          flex: 1 1 0;
+        }
+        .desktop-pos-layout {
+          height: 100%;
+          max-height: 100%;
+          min-height: 0;
+          display: flex;
+          flex-direction: column;
+          flex: 1 1 0;
+        }
         .order-layout {
           display: grid;
           grid-template-columns: 1fr 390px;
+          grid-template-rows: minmax(0, 1fr);
           gap: 1rem;
           height: 100%;
           max-height: 100%;
           min-height: 0;
+          flex: 1 1 0;
           overflow: hidden;
         }
         .order-left-panel {
           background: #ffffff;
           border: 1px solid #e2e8f0;
           border-radius: 0.75rem;
-          padding: 1.15rem;
+          padding: 1.15rem 1.15rem 0.5rem 1.15rem;
           display: flex;
           flex-direction: column;
           height: 100%;
           max-height: 100%;
           min-height: 0;
-          overflow-y: auto;
+          overflow: hidden;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
         }
         .panel-header-row {
-          margin-bottom: 1rem;
+          margin-bottom: 0.75rem;
+          flex-shrink: 0;
         }
         .panel-title {
           font-size: 1.15rem;
@@ -2172,7 +2194,8 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
         .crumb-back-btn:hover { background: #e2e8f0; }
 
         .search-bar-row {
-          margin-bottom: 1.25rem;
+          margin-bottom: 1rem;
+          flex-shrink: 0;
         }
         .search-input {
           width: 100%;
@@ -2194,17 +2217,42 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
           color: #94a3b8;
         }
 
+        /* Dedicated Scroll Area for Categories and Food Items */
+        .order-content-scroll {
+          flex: 1 1 0;
+          min-height: 0;
+          overflow-y: auto;
+          overflow-x: hidden;
+          padding-right: 0.35rem;
+          -webkit-overflow-scrolling: touch;
+        }
+        .order-content-scroll::-webkit-scrollbar {
+          width: 6px;
+        }
+        .order-content-scroll::-webkit-scrollbar-track {
+          background: #f8fafc;
+          border-radius: 4px;
+        }
+        .order-content-scroll::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 4px;
+        }
+        .order-content-scroll::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
+        }
+
         /* Categories Grid */
         .categories-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-          gap: 1rem;
+          grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+          gap: 0.85rem;
+          padding-bottom: 0.75rem;
         }
         .category-tile {
           background: #ffffff;
           border: 1.5px solid #fde68a;
           border-radius: 0.65rem;
-          padding: 1.5rem 1rem;
+          padding: 1.15rem 0.75rem;
           cursor: pointer;
           transition: all 0.2s;
           display: flex;
@@ -2212,7 +2260,7 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
           align-items: center;
           justify-content: center;
           text-align: center;
-          min-height: 108px;
+          min-height: 96px;
           box-shadow: 0 2px 5px rgba(245, 158, 11, 0.08);
         }
         .category-tile:hover {
@@ -2245,6 +2293,7 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
           display: grid;
           grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
           gap: 1rem;
+          padding-bottom: 2rem;
         }
         .empty-items-msg {
           grid-column: 1 / -1;
