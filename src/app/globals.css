@@ -24,7 +24,10 @@ body {
 
 /* Prevent zoom on input focus on iOS */
 @media screen and (max-width: 768px) {
-  input, select, textarea {
+
+  input,
+  select,
+  textarea {
     font-size: 16px !important;
   }
 }
@@ -1171,14 +1174,30 @@ body {
 }
 
 @keyframes loader-slide {
-  0%   { width: 0%; opacity: 1; }
-  60%  { width: 85%; opacity: 1; }
-  100% { width: 100%; opacity: 0; }
+  0% {
+    width: 0%;
+    opacity: 1;
+  }
+
+  60% {
+    width: 85%;
+    opacity: 1;
+  }
+
+  100% {
+    width: 100%;
+    opacity: 0;
+  }
 }
 
 @keyframes loader-shimmer {
-  0%   { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 /* Nav Loading State */
@@ -1282,8 +1301,15 @@ body {
 
 /* Page content fade-in on navigation */
 @keyframes page-fadein {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .page-fadein {
@@ -1302,6 +1328,7 @@ button:disabled:active {
 
 /* ─── Mobile Responsiveness (Screen <= 900px & <= 480px) ────────────────────── */
 @media screen and (max-width: 900px) {
+
   /* Shell layouts */
   .sa-root,
   .ra-root {
@@ -1336,8 +1363,8 @@ button:disabled:active {
     margin-bottom: 1.25rem !important;
   }
 
-  .sa-page-header > div:last-child,
-  .ra-page-header > div:last-child {
+  .sa-page-header>div:last-child,
+  .ra-page-header>div:last-child {
     display: flex !important;
     flex-wrap: wrap !important;
     gap: 0.5rem !important;
@@ -1422,6 +1449,7 @@ button:disabled:active {
 }
 
 @media screen and (max-width: 480px) {
+
   .clean-stat-grid,
   .kpi-grid {
     grid-template-columns: 1fr 1fr !important;
@@ -1434,6 +1462,497 @@ button:disabled:active {
     font-size: 0.8rem !important;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   POS TERMINAL — MOBILE EZO BILLING RESPONSIVE STYLES (<= 900px)
+   Matches modern high-speed POS apps (EZO Billing style)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Desktop defaults (> 900px) */
+.desktop-pos-layout {
+  display: block;
+  height: 100%;
+}
+.mobile-pos-layout {
+  display: none !important;
+}
+
+@media screen and (max-width: 900px) {
+
+  /* Hide desktop POS 2-column layout on mobile */
+  .desktop-pos-layout {
+    display: none !important;
+  }
+
+  /* Show dedicated mobile EZO Billing layout on mobile */
+  .mobile-pos-layout {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+    width: 100% !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    background: #f8fafc;
+  }
+
+  /* Mobile POS Header adjustments */
+  .pos-top-header {
+    flex-shrink: 0 !important;
+  }
+
+  .header-inner {
+    padding: 0.45rem 0.75rem !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    gap: 0.5rem !important;
+  }
+
+  .header-title {
+    font-size: 1.05rem !important;
+    max-width: 150px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .header-subtitle {
+    display: none !important;
+  }
+
+  .header-right {
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.35rem !important;
+  }
+
+  .header-right .user-chip {
+    display: none !important;
+  }
+
+  .header-admin-link,
+  .signout-btn {
+    padding: 0.3rem 0.55rem !important;
+    font-size: 0.75rem !important;
+    border-radius: 0.375rem !important;
+  }
+
+  /* Compact scrollable POS Tabs */
+  .nav-tabs-bar {
+    overflow-x: auto !important;
+    white-space: nowrap !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    display: flex !important;
+    padding: 0 0.25rem !important;
+  }
+
+  .nav-tabs-bar::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .nav-tab-btn {
+    flex: 0 0 auto !important;
+    padding: 0.5rem 0.85rem !important;
+    font-size: 0.82rem !important;
+  }
+
+  /* Mobile POS Body */
+  .pos-body {
+    height: calc(100vh - 100px) !important;
+    padding: 0.5rem !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+  }
+
+  .order-tab-wrapper {
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+
+  /* ─── EZO Mobile Menu Screen ─── */
+  .mobile-menu-view {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .ezo-search-bar {
+    display: flex;
+    align-items: center;
+    background: #ffffff;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 0.75rem;
+    padding: 0.45rem 0.75rem;
+    gap: 0.4rem;
+    margin-bottom: 0.45rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+    flex-shrink: 0;
+  }
+
+  .ezo-search-input {
+    flex: 1;
+    border: none;
+    outline: none;
+    font-size: 0.88rem;
+    color: #1e293b;
+    background: transparent;
+  }
+
+  .ezo-search-clear {
+    background: #f1f5f9;
+    border: none;
+    color: #64748b;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    cursor: pointer;
+  }
+
+  /* Horizontal Category Pills */
+  .ezo-category-pills {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 0.45rem;
+    flex-shrink: 0;
+  }
+
+  .ezo-category-pills::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ezo-pill {
+    padding: 0.35rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    color: #475569;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+
+  .ezo-pill.active {
+    background: #0f172a;
+    border-color: #0f172a;
+    color: #ffffff;
+    box-shadow: 0 2px 4px rgba(15, 23, 42, 0.15);
+  }
+
+  /* Section Title */
+  .ezo-section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.2rem 0.2rem 0.4rem 0.2rem;
+    flex-shrink: 0;
+  }
+
+  .ezo-section-title {
+    font-size: 0.88rem;
+    font-weight: 800;
+    color: #1e293b;
+    margin: 0;
+    font-family: 'Outfit', sans-serif;
+  }
+
+  .ezo-section-count {
+    font-size: 0.75rem;
+    color: #64748b;
+    font-weight: 600;
+  }
+
+  /* EZO 3-Column Food Items Grid */
+  .ezo-food-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.45rem;
+    overflow-y: auto;
+    padding-bottom: 5.5rem;
+    /* space for fixed floating cart bar */
+    flex: 1 1 auto;
+    min-height: 0;
+    align-content: start;
+  }
+
+  @media screen and (max-width: 360px) {
+    .ezo-food-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  /* EZO Card */
+  .ezo-card {
+    background: #ffffff;
+    border: 1.5px solid #f1f5f9;
+    border-radius: 0.75rem;
+    padding: 0.45rem 0.4rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    transition: all 0.15s ease-in-out;
+    position: relative;
+    user-select: none;
+  }
+
+  /* Active / Selected in Cart styling (matches "Idli" card in EZO reference) */
+  .ezo-card.in-cart {
+    background: #f0fdf4 !important;
+    border-color: #86efac !important;
+    box-shadow: 0 2px 8px rgba(34, 197, 94, 0.12) !important;
+  }
+
+  .ezo-img-wrapper {
+    width: 100%;
+    aspect-ratio: 1;
+    max-height: 72px;
+    border-radius: 0.5rem;
+    background: #f8fafc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 0.35rem;
+    overflow: hidden;
+  }
+
+  .ezo-food-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .ezo-food-emoji {
+    font-size: 2.1rem;
+    line-height: 1;
+  }
+
+  .ezo-item-name {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #1e293b;
+    line-height: 1.25;
+    margin-bottom: 0.25rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 1.9rem;
+  }
+
+  .ezo-card.in-cart .ezo-item-name {
+    color: #15803d;
+  }
+
+  .ezo-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 0.2rem;
+  }
+
+  .ezo-card-price {
+    font-size: 0.85rem;
+    font-weight: 800;
+    color: #0f172a;
+    font-family: 'Outfit', sans-serif;
+  }
+
+  .ezo-card.in-cart .ezo-card-price {
+    color: #166534;
+  }
+
+  /* Circular Purple / Indigo Action Button (matches EZO screenshot) */
+  .ezo-btn-add {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #ede9fe;
+    border: none;
+    color: #6d28d9;
+    font-size: 1.15rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.1s, background 0.15s;
+    line-height: 1;
+    padding: 0;
+  }
+
+  .ezo-btn-add:active {
+    transform: scale(0.9);
+    background: #ddd6fe;
+  }
+
+  /* Mini Stepper when in cart */
+  .ezo-stepper-mini {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+  }
+
+  .ezo-btn-minus {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #4f46e5;
+    border: none;
+    color: #ffffff;
+    font-size: 1rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0;
+  }
+
+  .ezo-qty-badge {
+    font-size: 0.78rem;
+    font-weight: 800;
+    color: #15803d;
+    padding: 0 0.15rem;
+  }
+
+  .ezo-btn-plus-mini {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #22c55e;
+    border: none;
+    color: #ffffff;
+    font-size: 1rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0;
+  }
+
+  /* Fixed Floating Cart Bar */
+  .ezo-floating-cart-bar {
+    position: fixed;
+    bottom: 0.75rem;
+    left: 0.75rem;
+    right: 0.75rem;
+    background: linear-gradient(135deg, #0f172a, #1e293b);
+    color: #ffffff;
+    padding: 0.75rem 1rem;
+    border-radius: 0.85rem;
+    box-shadow: 0 10px 25px rgba(15, 23, 42, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    z-index: 999;
+    border: 1.5px solid #334155;
+    animation: slideUp 0.2s ease-out;
+  }
+
+  .ezo-cart-bar-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .ezo-cart-bar-badge {
+    background: #f59e0b;
+    color: #0f172a;
+    font-weight: 800;
+    font-size: 0.82rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 0.35rem;
+  }
+
+  .ezo-cart-bar-total {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: #38bdf8;
+    font-family: 'Outfit', sans-serif;
+  }
+
+  .ezo-cart-bar-right {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.88rem;
+    font-weight: 800;
+    color: #facc15;
+  }
+
+  /* ─── EZO Mobile Cart Screen ─── */
+  .mobile-cart-view {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: #ffffff;
+    border-radius: 0.75rem;
+    padding: 0.75rem;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+    overflow: hidden;
+  }
+
+  .mobile-cart-back-btn {
+    width: 100%;
+    background: #fef3c7;
+    border: 1.5px solid #fde68a;
+    border-radius: 0.5rem;
+    padding: 0.65rem;
+    color: #92400e;
+    font-size: 0.88rem;
+    font-weight: 800;
+    cursor: pointer;
+    margin-bottom: 0.65rem;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+  }
+
+  .mobile-cart-back-btn:hover {
+    background: #fde68a;
+  }
+
+  .mobile-cart-items-scroll {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    min-height: 0;
+    padding: 0.25rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .mobile-cart-footer {
+    flex-shrink: 0;
+    border-top: 1.5px solid #e2e8f0;
+    padding-top: 0.65rem;
+    background: #ffffff;
+  }
+}
+
 
 /* ─────────────────────────────────────────────────────────────────────────────
    @MEDIA PRINT — Thermal Receipt / KOT Printing (POSIO QX300 / 80mm ESC/POS)
@@ -1449,7 +1968,8 @@ button:disabled:active {
     size: 80mm auto;
   }
 
-  html, body {
+  html,
+  body {
     margin: 0 !important;
     padding: 0 !important;
     background: #ffffff !important;
@@ -1601,4 +2121,3 @@ button:disabled:active {
     white-space: nowrap !important;
   }
 }
-
