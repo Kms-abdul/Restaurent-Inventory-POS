@@ -477,3 +477,117 @@ export async function voidOrder(orderId: string, reason: string) {
   if (error) throw new Error(error.message)
   revalidatePath('/staff/pos')
 }
+
+/**
+ * VOID MULTIPLE / TABLE ORDERS: Void all active orders associated with a table.
+ */
+export async function voidTableOrders(params: {
+  orderIds: string[]
+  reason?: string
+}) {
+  const ctx = await getActionContext()
+  if (!ctx) throw new Error('Unauthorized')
+
+  if (!params.orderIds || params.orderIds.length === 0) return { success: true }
+
+  const supabase = ctx.isSuperAdmin ? await createServiceClient() : await createClient()
+  const { error } = await supabase
+    .from('orders')
+    .update({
+      status: 'voided',
+      voided_at: new Date().toISOString(),
+      void_reason: params.reason || 'Cancelled by staff',
+    })
+    .in('id', params.orderIds)
+    .eq('status', 'active')
+
+  if (error) throw new Error(error.message)
+  revalidatePath('/staff/pos')
+  return { success: true }
+}
+
+/**
+ * TRANSFER TABLE: Move all active orders from one table to another (e.g. T1 to T2).
+ */
+export async function transferTableOrder(params: {
+  orderIds: string[]
+  fromTable: string
+  toTable: string
+}) {
+  const ctx = await getActionContext()
+  if (!ctx) throw new Error('Unauthorized')
+
+  if (!params.orderIds || params.orderIds.length === 0) return { success: true }
+
+  const supabase = ctx.isSuperAdmin ? await createServiceClient() : await createClient()
+
+  // Fetch current orders to preserve and rewrite notes
+  const { data: existingOrders, error: fetchErr } = await supabase
+    .from('orders')
+    .select('id, notes')
+    .in('id', params.orderIds)
+
+  if (fetchErr) throw new Error(fetchErr.message)
+
+  for (const ord of existingOrders || []) {
+    const fromClean = params.fromTable.trim()
+    const toClean = params.toTable.trim()
+    let updatedNotes = ord.notes || ''
+    if (updatedNotes.includes(fromClean)) {
+      updatedNotes = updatedNotes.split(fromClean).join(toClean)
+    } else {
+      updatedNotes = updatedNotes ? `${updatedNotes} [Transferred to ${toClean}]` : `[${toClean}]`
+    }
+
+    const { error: updateErr } = await supabase
+      .from('orders')
+      .update({
+        table_number: toClean,
+        notes: updatedNotes,
+      })
+      .eq('id', ord.id)
+
+    if (updateErr) throw new Error(updateErr.message)
+  }
+
+  revalidatePath('/staff/pos')
+  return { success: true }
+}
+
+/**
+ * REPLACE TABLE ORDER: Wipe/void previous orders for this table and insert fresh replacement order.
+ */
+export async function replaceTableOrder(params: {
+  branchId: string
+  restaurantId: string
+  tableLabel: string
+  oldOrderIds: string[]
+  items: CartItem[]
+  restaurantName?: string
+  branchName?: string
+  cashierName?: string
+  notes?: string
+}) {
+  const ctx = await getActionContext()
+  if (!ctx) throw new Error('Unauthorized')
+
+  // 1. Void existing active orders for this table
+  if (params.oldOrderIds && params.oldOrderIds.length > 0) {
+    await voidTableOrders({
+      orderIds: params.oldOrderIds,
+      reason: `Replaced with new order on ${params.tableLabel}`,
+    })
+  }
+
+  // 2. Create the new order for this table
+  return holdOrder({
+    branchId: params.branchId,
+    restaurantId: params.restaurantId,
+    tableLabel: params.tableLabel,
+    notes: params.notes ? `[REPLACED] ${params.notes}` : '[REPLACED]',
+    items: params.items,
+    restaurantName: params.restaurantName,
+    branchName: params.branchName,
+    cashierName: params.cashierName,
+  })
+}

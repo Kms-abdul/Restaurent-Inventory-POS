@@ -4,7 +4,7 @@ import { useState, useCallback, useTransition, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { CartItem } from '@/types/database'
-import { createPOSOrder, createKOTOrder, holdOrder, addItemsToHeldOrder, checkoutHeldOrder, checkoutMultipleOrders, listOrders, updateFulfillmentStatus, voidOrder } from '@/app/actions/orders'
+import { createPOSOrder, createKOTOrder, holdOrder, addItemsToHeldOrder, checkoutHeldOrder, checkoutMultipleOrders, listOrders, updateFulfillmentStatus, voidOrder, replaceTableOrder, transferTableOrder, voidTableOrders } from '@/app/actions/orders'
 import { printJobAction, getDiscoveredPrintersAction, printDirectToThermalPrinter } from '@/app/actions/print-direct'
 import type { ThermalOrderData } from '@/utils/thermal-printer'
 import { formatTicketText, type PrintTicketPayload } from '@/utils/receipt-formatter'
@@ -178,8 +178,39 @@ export default function POSTerminal({
   // ─── KOT / Dine-In / CHECKOUT state ──────────────────────────────────────
   // Table label used for both KOT (takeaway ref) and Dine-In (table number)
   const [tableLabel, setTableLabel] = useState<string>('')
+
+  // Modals for Dine-in Table operations
+  const [transferModal, setTransferModal] = useState<{
+    fromTable: string
+    orders: PendingOrder[]
+  } | null>(null)
+  const [replaceModal, setReplaceModal] = useState<{
+    table: string
+    orders: PendingOrder[]
+  } | null>(null)
+  const [deleteModal, setDeleteModal] = useState<{
+    table: string
+    orders: PendingOrder[]
+  } | null>(null)
+
   // All pending (kitchen-sent, not yet billed) orders
   const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([])
+
+  // Standard selectable tables
+  const DEFAULT_TABLES = useMemo(() => [
+    'T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12'
+  ], [])
+
+  // All known tables (default list + any extra tables present in pending orders)
+  const allSelectableTables = useMemo(() => {
+    const list = [...DEFAULT_TABLES]
+    pendingOrders.forEach(o => {
+      if (o.type === 'dine-in' && o.table_label && !list.includes(o.table_label)) {
+        list.push(o.table_label)
+      }
+    })
+    return list
+  }, [DEFAULT_TABLES, pendingOrders])
   // Whether the pending orders panel is expanded
   const [showPendingPanel, setShowPendingPanel] = useState<boolean>(false)
   // Status feedback for the 3 action buttons
@@ -380,6 +411,156 @@ export default function POSTerminal({
   // Branch Switcher Handler
   const handleBranchChange = (newBranchId: string) => {
     router.push(`/staff/pos?branch=${newBranchId}&restaurant=${restaurantId}`)
+  }
+
+  // ─── Dine-In Table Handlers (Load, Replace, Transfer, Delete) ─────────────
+  const handleLoadTableItems = (table: string) => {
+    const orders = dineInByTable[table]
+    if (!orders || orders.length === 0) return
+    const allItems = orders.flatMap(o => o.items)
+    const mergedMap = new Map<string, CartItem>()
+    for (const it of allItems) {
+      const key = it.menuItemId || it.name
+      if (mergedMap.has(key)) {
+        const prev = mergedMap.get(key)!
+        mergedMap.set(key, {
+          ...prev,
+          qty: prev.qty + it.qty,
+          lineTotal: prev.lineTotal + it.lineTotal,
+        })
+      } else {
+        mergedMap.set(key, { ...it })
+      }
+    }
+    setCart(Array.from(mergedMap.values()))
+    setTableLabel(table)
+  }
+
+  const handleExecuteReplace = (table: string, orders: PendingOrder[]) => {
+    if (cart.length === 0) {
+      alert('Cart is empty. Please add items to replace the order for ' + table)
+      return
+    }
+    setReplaceModal(null)
+    setDineInStatus('pending')
+    startTransition(async () => {
+      try {
+        const oldOrderIds = orders.map(o => o.id)
+        const result = await replaceTableOrder({
+          branchId,
+          restaurantId,
+          tableLabel: table,
+          oldOrderIds,
+          items: cart,
+          restaurantName: printerSettings.headerText || restaurantName,
+          branchName: printerSettings.tagline || branchName,
+          cashierName,
+          notes: orderNotes.trim() || undefined,
+        })
+
+        const printData: ThermalOrderData = {
+          orderNumber: result.order_no,
+          createdAt: new Date().toISOString(),
+          restaurantName: printerSettings.headerText || restaurantName || 'RESTAURANT',
+          branchName: `${printerSettings.tagline || branchName} | ${table} [REPLACEMENT]`,
+          cashierName,
+          subtotal: subtotalRupees,
+          discount: 0,
+          total: subtotalRupees,
+          paymentMode: 'none',
+          items: cart.map(i => ({ name: i.name, quantity: i.qty, price: i.unitPrice / 100, lineTotal: i.lineTotal / 100 })),
+        }
+        triggerPrints(printData, 'KOT')
+
+        const newPending: PendingOrder = {
+          id: result.order_id,
+          order_no: result.order_no,
+          created_at: new Date().toISOString(),
+          type: 'dine-in',
+          table_label: table,
+          notes: `[REPLACED] ${table}`,
+          total_amount: subtotalPaise,
+          items: [...cart],
+        }
+
+        setPendingOrders(prev => [
+          newPending,
+          ...prev.filter(o => !(o.type === 'dine-in' && o.table_label === table))
+        ])
+
+        setNextOrderNo(result.order_no + 1)
+        setCart([])
+        clearDiscount()
+        setOrderNotes('')
+        setDineInStatus('success')
+        setTimeout(() => setDineInStatus('idle'), 3000)
+        void loadOrders()
+      } catch (err: unknown) {
+        setDineInStatus('error')
+        alert('Replace order failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
+        setTimeout(() => setDineInStatus('idle'), 3000)
+      }
+    })
+  }
+
+  const handleExecuteTransfer = (fromTable: string, toTable: string, orders: PendingOrder[]) => {
+    if (fromTable === toTable) return
+    setTransferModal(null)
+    setPendingAction(`transfer-${fromTable}`)
+    startTransition(async () => {
+      try {
+        const orderIds = orders.map(o => o.id)
+        await transferTableOrder({
+          orderIds,
+          fromTable,
+          toTable,
+        })
+
+        setPendingOrders(prev =>
+          prev.map(o => {
+            if (o.type === 'dine-in' && o.table_label === fromTable) {
+              return { ...o, table_label: toTable }
+            }
+            return o
+          })
+        )
+
+        setTableLabel(toTable)
+        setPendingAction(null)
+        void loadOrders()
+      } catch (err: unknown) {
+        setPendingAction(null)
+        alert('Table transfer failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
+      }
+    })
+  }
+
+  const handleExecuteDelete = (table: string, orders: PendingOrder[]) => {
+    setDeleteModal(null)
+    setPendingAction(`delete-${table}`)
+    startTransition(async () => {
+      try {
+        const orderIds = orders.map(o => o.id)
+        await voidTableOrders({
+          orderIds,
+          reason: `Cancelled by cashier from table ${table}`,
+        })
+
+        setPendingOrders(prev =>
+          prev.filter(o => !(o.type === 'dine-in' && o.table_label === table))
+        )
+
+        if (tableLabel === table) {
+          setCart([])
+        }
+
+        setPendingAction(null)
+        void loadOrders()
+      } catch (err: unknown) {
+        setPendingAction(null)
+        alert('Delete table order failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
+      }
+    })
   }
 
   // Cart operations
@@ -806,6 +987,10 @@ export default function POSTerminal({
         }
         triggerPrints(printData, 'RECEIPT')
 
+        if (checkoutTarget.tableLabel && tableLabel === checkoutTarget.tableLabel) {
+          setTableLabel('')
+          setCart([])
+        }
         setCheckoutTarget(null)
         setCheckoutStatus('success')
         setTimeout(() => setCheckoutStatus('idle'), 3000)
@@ -1516,28 +1701,79 @@ export default function POSTerminal({
                     {/* ── Table picker + Order-type label ──────── */}
                     <div className="table-label-row">
                       <div className="table-quick-picker">
-                        {['T1','T2','T3','T4','T5','T6','T7','T8'].map(t => (
-                          <button
-                            key={t}
-                            type="button"
-                            className={`table-quick-btn ${tableLabel === t ? 'active' : ''}`}
-                            onClick={() => setTableLabel(prev => prev === t ? '' : t)}
-                          >{t}</button>
-                        ))}
+                        {allSelectableTables.map(t => {
+                          const isOcc = Boolean(dineInByTable[t] && dineInByTable[t].length > 0)
+                          return (
+                            <button
+                              key={t}
+                              type="button"
+                              className={`table-quick-btn ${tableLabel === t ? 'active' : ''} ${isOcc ? 'table-quick-btn-occupied' : ''}`}
+                              onClick={() => setTableLabel(prev => prev === t ? '' : t)}
+                              title={isOcc ? `${t} (Occupied - ₹${(dineInByTable[t].reduce((s,o)=>s+o.total_amount,0)/100).toFixed(0)})` : `${t} (Available)`}
+                            >
+                              {t}
+                              {isOcc && <span className="table-quick-dot" />}
+                            </button>
+                          )
+                        })}
                       </div>
                       <input
                         type="text"
                         value={tableLabel}
                         onChange={e => setTableLabel(e.target.value)}
-                        placeholder="Table / Name (for Dine-In, optional for Takeaway)"
+                        placeholder="Select or enter table (e.g. T1, T2) or customer name"
                         className="table-label-input"
                         maxLength={40}
                       />
+
+                      {/* Quick action bar if selected table has active running order */}
+                      {tableLabel && Boolean(dineInByTable[tableLabel]?.length) && (
+                        <div className="table-quick-active-bar">
+                          <span className="table-quick-active-title">
+                            🍽️ {tableLabel} Active (₹{(dineInByTable[tableLabel].reduce((s,o)=>s+o.total_amount,0)/100).toFixed(0)})
+                          </span>
+                          <div className="table-quick-active-btns">
+                            <button
+                              type="button"
+                              className="btn-quick-tbl-action"
+                              onClick={() => handleLoadTableItems(tableLabel)}
+                              title="Load existing items into cart to change or edit"
+                            >
+                              ✏️ Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-quick-tbl-action"
+                              disabled={cart.length === 0}
+                              onClick={() => setReplaceModal({ table: tableLabel, orders: dineInByTable[tableLabel] })}
+                              title="Replace table's order with current cart"
+                            >
+                              🔄 Replace
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-quick-tbl-action"
+                              onClick={() => setTransferModal({ fromTable: tableLabel, orders: dineInByTable[tableLabel] })}
+                              title="Transfer order to another table"
+                            >
+                              🔀 Move
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-quick-tbl-action btn-quick-tbl-danger"
+                              onClick={() => setDeleteModal({ table: tableLabel, orders: dineInByTable[tableLabel] })}
+                              title="Delete/void active order"
+                            >
+                              🗑️ Delete
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* ── 3-Action Button Row ───────────────────── */}
                     <div className="action-3btn-row">
-                      {/* KOT — Takeaway */}
+                      {/* Takeaway option (in place of KOT) */}
                       <button
                         type="button"
                         disabled={cart.length === 0 || isPending}
@@ -1545,8 +1781,8 @@ export default function POSTerminal({
                         className={`btn-action-kot ${kotStatus === 'success' ? 'btn-action-success' : ''}`}
                         title="Takeaway: send to kitchen & add to pending list for checkout later."
                       >
-                        {kotStatus === 'pending' ? '⏳' : kotStatus === 'success' ? '✅' : '🖨️'}
-                        <span>{kotStatus === 'success' ? 'Sent!' : 'KOT'}</span>
+                        {kotStatus === 'pending' ? '⏳' : kotStatus === 'success' ? '✅' : '🛍️'}
+                        <span>{kotStatus === 'success' ? 'Sent!' : 'Takeaway'}</span>
                       </button>
 
                       {/* Dine-In */}
@@ -1658,7 +1894,42 @@ export default function POSTerminal({
                                       <div className="held-order-total" style={{ borderTop: '1px dashed #c7d2fe', paddingTop: '0.3rem', marginTop: '0.2rem' }}>
                                         Grand Total: ₹{(tableTotal / 100).toFixed(2)}
                                       </div>
-                                      <div className="held-order-actions">
+                                      <div className="held-order-actions" style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.25rem' }}>
+                                          <button
+                                            type="button"
+                                            className="btn-quick-tbl-action"
+                                            onClick={() => handleLoadTableItems(table)}
+                                            title="Load items to cart to edit order"
+                                          >
+                                            ✏️ Edit
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="btn-quick-tbl-action"
+                                            disabled={cart.length === 0}
+                                            onClick={() => setReplaceModal({ table, orders })}
+                                            title="Replace order with current cart items"
+                                          >
+                                            🔄 Replace
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="btn-quick-tbl-action"
+                                            onClick={() => setTransferModal({ fromTable: table, orders })}
+                                            title="Transfer to another table"
+                                          >
+                                            🔀 Move
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="btn-quick-tbl-action btn-quick-tbl-danger"
+                                            onClick={() => setDeleteModal({ table, orders })}
+                                            title="Delete / cancel order"
+                                          >
+                                            🗑️ Delete
+                                          </button>
+                                        </div>
                                         <button
                                           type="button"
                                           className="btn-held-checkout"
@@ -2033,24 +2304,71 @@ export default function POSTerminal({
 
                       {/* Table / Customer Label */}
                       <div className="table-quick-chips" style={{ marginBottom: '0.35rem' }}>
-                        {['T1', 'T2', 'T3', 'T4', 'T5', 'T6'].map(t => (
-                          <button
-                            key={t}
-                            type="button"
-                            className={`table-quick-btn ${tableLabel === t ? 'active' : ''}`}
-                            onClick={() => setTableLabel(prev => prev === t ? '' : t)}
-                          >{t}</button>
-                        ))}
+                        {allSelectableTables.map(t => {
+                          const isOcc = Boolean(dineInByTable[t] && dineInByTable[t].length > 0)
+                          return (
+                            <button
+                              key={t}
+                              type="button"
+                              className={`table-quick-btn ${tableLabel === t ? 'active' : ''} ${isOcc ? 'table-quick-btn-occupied' : ''}`}
+                              onClick={() => setTableLabel(prev => prev === t ? '' : t)}
+                              title={isOcc ? `${t} (Occupied - ₹${(dineInByTable[t].reduce((s,o)=>s+o.total_amount,0)/100).toFixed(0)})` : `${t} (Available)`}
+                            >
+                              {t}
+                              {isOcc && <span className="table-quick-dot" />}
+                            </button>
+                          )
+                        })}
                       </div>
                       <input
                         type="text"
                         value={tableLabel}
                         onChange={e => setTableLabel(e.target.value)}
-                        placeholder="Table / Name (for Dine-In, optional for Takeaway)"
+                        placeholder="Select or enter table (e.g. T1, T2) or customer name"
                         className="table-label-input"
                         style={{ width: '100%', marginBottom: '0.4rem' }}
                         maxLength={40}
                       />
+
+                      {/* Quick action bar if selected table has active running order (Mobile) */}
+                      {tableLabel && Boolean(dineInByTable[tableLabel]?.length) && (
+                        <div className="table-quick-active-bar" style={{ marginBottom: '0.4rem' }}>
+                          <span className="table-quick-active-title">
+                            🍽️ {tableLabel} Active (₹{(dineInByTable[tableLabel].reduce((s,o)=>s+o.total_amount,0)/100).toFixed(0)})
+                          </span>
+                          <div className="table-quick-active-btns">
+                            <button
+                              type="button"
+                              className="btn-quick-tbl-action"
+                              onClick={() => handleLoadTableItems(tableLabel)}
+                            >
+                              ✏️ Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-quick-tbl-action"
+                              disabled={cart.length === 0}
+                              onClick={() => setReplaceModal({ table: tableLabel, orders: dineInByTable[tableLabel] })}
+                            >
+                              🔄 Replace
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-quick-tbl-action"
+                              onClick={() => setTransferModal({ fromTable: tableLabel, orders: dineInByTable[tableLabel] })}
+                            >
+                              🔀 Move
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-quick-tbl-action btn-quick-tbl-danger"
+                              onClick={() => setDeleteModal({ table: tableLabel, orders: dineInByTable[tableLabel] })}
+                            >
+                              🗑️ Delete
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
                       {/* ── 3-Action Button Row (Mobile) ────────────── */}
                       <div className="action-3btn-row">
@@ -2059,9 +2377,10 @@ export default function POSTerminal({
                           disabled={cart.length === 0 || isPending}
                           onClick={handleKOT}
                           className={`btn-action-kot ${kotStatus === 'success' ? 'btn-action-success' : ''}`}
+                          title="Takeaway: send to kitchen & pay later"
                         >
-                          {kotStatus === 'pending' ? '⏳' : kotStatus === 'success' ? '✅' : '🖨️'}
-                          <span>{kotStatus === 'success' ? 'Sent!' : 'KOT'}</span>
+                          {kotStatus === 'pending' ? '⏳' : kotStatus === 'success' ? '✅' : '🛍️'}
+                          <span>{kotStatus === 'success' ? 'Sent!' : 'Takeaway'}</span>
                         </button>
 
                         <button
@@ -2192,6 +2511,97 @@ export default function POSTerminal({
             </div>
 
             {/* ── Shared Checkout Confirmation Dialog (Desktop & Mobile) ──────────── */}
+            {/* ─── MODALS FOR DINE-IN TABLE ACTIONS ─── */}
+            {/* 1. Transfer Table Modal */}
+            {transferModal && (
+              <div className="pos-modal-overlay">
+                <div className="pos-modal-card">
+                  <div className="pos-modal-header">
+                    <h3>🔀 Transfer Table</h3>
+                    <button type="button" className="pos-modal-close" onClick={() => setTransferModal(null)}>✕</button>
+                  </div>
+                  <p style={{ margin: '0.5rem 0', color: '#64748b', fontSize: '0.9rem' }}>
+                    Select destination table to move <strong>{transferModal.fromTable}</strong>'s active order to:
+                  </p>
+                  <div className="transfer-grid">
+                    {allSelectableTables.filter(t => t !== transferModal.fromTable).map(t => {
+                      const isOcc = Boolean(dineInByTable[t] && dineInByTable[t].length > 0)
+                      return (
+                        <button
+                          key={t}
+                          type="button"
+                          className={`transfer-table-btn ${isOcc ? 'dest-occupied' : 'dest-available'}`}
+                          onClick={() => handleExecuteTransfer(transferModal.fromTable, t, transferModal.orders)}
+                        >
+                          <strong>{t}</strong>
+                          <span>{isOcc ? 'Occupied (Merge)' : 'Available'}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div className="pos-modal-footer">
+                    <button type="button" className="btn-dialog-cancel" onClick={() => setTransferModal(null)}>Cancel</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 2. Replace Table Order Confirmation Modal */}
+            {replaceModal && (
+              <div className="pos-modal-overlay">
+                <div className="pos-modal-card">
+                  <div className="pos-modal-header">
+                    <h3>🔄 Replace Order on {replaceModal.table}</h3>
+                    <button type="button" className="pos-modal-close" onClick={() => setReplaceModal(null)}>✕</button>
+                  </div>
+                  <p style={{ margin: '0.75rem 0', color: '#334155', fontSize: '0.95rem' }}>
+                    Are you sure you want to <strong>REPLACE</strong> the existing active order on <strong>{replaceModal.table}</strong> with the <strong>{cart.length} item(s)</strong> currently in the cart?
+                  </p>
+                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '0.5rem', padding: '0.6rem', color: '#991b1b', fontSize: '0.82rem', marginBottom: '1rem' }}>
+                    ⚠️ The previous items for {replaceModal.table} will be cancelled/voided and replaced with this new cart.
+                  </div>
+                  <div className="pos-modal-footer">
+                    <button type="button" className="btn-dialog-cancel" onClick={() => setReplaceModal(null)}>Cancel</button>
+                    <button
+                      type="button"
+                      className="btn-dialog-danger"
+                      onClick={() => handleExecuteReplace(replaceModal.table, replaceModal.orders)}
+                    >
+                      Yes, Replace Order
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 3. Delete Table Order Confirmation Modal */}
+            {deleteModal && (
+              <div className="pos-modal-overlay">
+                <div className="pos-modal-card">
+                  <div className="pos-modal-header">
+                    <h3>🗑️ Delete Order on {deleteModal.table}</h3>
+                    <button type="button" className="pos-modal-close" onClick={() => setDeleteModal(null)}>✕</button>
+                  </div>
+                  <p style={{ margin: '0.75rem 0', color: '#334155', fontSize: '0.95rem' }}>
+                    Are you sure you want to <strong>DELETE / VOID</strong> the active order on <strong>{deleteModal.table}</strong>?
+                  </p>
+                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '0.5rem', padding: '0.6rem', color: '#991b1b', fontSize: '0.82rem', marginBottom: '1rem' }}>
+                    ⚠️ This will cancel all active rounds for {deleteModal.table} and make the table Available again.
+                  </div>
+                  <div className="pos-modal-footer">
+                    <button type="button" className="btn-dialog-cancel" onClick={() => setDeleteModal(null)}>Cancel</button>
+                    <button
+                      type="button"
+                      className="btn-dialog-danger"
+                      onClick={() => handleExecuteDelete(deleteModal.table, deleteModal.orders)}
+                    >
+                      Yes, Delete Order
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {checkoutTarget && (
               <div className="checkout-overlay">
                 <div className="checkout-dialog">
