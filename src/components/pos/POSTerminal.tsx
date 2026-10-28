@@ -847,16 +847,18 @@ export default function POSTerminal({
 
   // ─── Shared print helper ──────────────────────────────────────────────────
   const triggerPrints = (printData: ThermalOrderData, type: 'KOT' | 'RECEIPT' | 'BOTH') => {
+    // 1. Try local bridge (localhost:8080) for instant direct print
+    tryDirectLocalBridgePrint(type, printData)
+
+    // 2. Also send via server action (direct spooler or Supabase queue)
     if ((type === 'KOT' || type === 'BOTH') && printerSettings.enableKotPrint) {
       void printJobAction({
         type: 'KOT',
         data: printData,
         printerName: printerSettings.printerName || 'POSIO QX300',
         paperWidth: printerSettings.paperWidth || 48,
-      }).then(res => {
-        if (!res?.success && printerSettings.enableLocalBrowserPrint && typeof window !== 'undefined' && window.innerWidth > 900) {
-          window.print()
-        }
+      }).catch(err => {
+        console.warn('Background KOT print notice:', err)
       })
     }
     if ((type === 'RECEIPT' || type === 'BOTH') && printerSettings.enableReceiptPrint) {
@@ -867,6 +869,8 @@ export default function POSTerminal({
           data: printData,
           printerName: printerSettings.printerName || 'POSIO QX300',
           paperWidth: printerSettings.paperWidth || 48,
+        }).catch(err => {
+          console.warn('Background Receipt print notice:', err)
         })
       }, delayMs)
     }
@@ -1658,6 +1662,26 @@ export default function POSTerminal({
     return null
   }
 
+  const tryDirectLocalBridgePrint = async (type: 'KOT' | 'RECEIPT' | 'BOTH', data: ThermalOrderData) => {
+    try {
+      // If local print bridge is running on cashier counter PC (http://127.0.0.1:8080/print),
+      // send directly to local USB thermal printer with 0ms latency!
+      await fetch('http://127.0.0.1:8080/print', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type,
+          data,
+          printerName: printerSettings.printerName || 'POSIO QX300',
+          paperWidth: printerSettings.paperWidth || 48,
+        }),
+        signal: AbortSignal.timeout(1200),
+      })
+    } catch {
+      // Local bridge not running or unreachable, continues via server action
+    }
+  }
+
   const handlePrintKOT = async (override?: any) => {
     const data = getThermalDataFromOrder(override)
     if (!data || data.items.length === 0) {
@@ -1667,6 +1691,7 @@ export default function POSTerminal({
 
     setKotPrintStatus('printing')
     try {
+      await tryDirectLocalBridgePrint('KOT', data)
       const res = await printJobAction({
         type: 'KOT',
         data,
@@ -1677,11 +1702,11 @@ export default function POSTerminal({
         setKotPrintStatus('printed')
         setTimeout(() => setKotPrintStatus(null), 2500)
       } else {
-        alert('KOT print failed: ' + (res.error || 'Unknown error'))
+        alert('KOT print notice: ' + (res.error || 'Direct print failed'))
         setKotPrintStatus(null)
       }
     } catch (e: any) {
-      alert('KOT print failed: ' + e.message)
+      alert('KOT print error: ' + e.message)
       setKotPrintStatus(null)
     }
   }
@@ -1695,6 +1720,7 @@ export default function POSTerminal({
 
     setBillPrintStatus('printing')
     try {
+      await tryDirectLocalBridgePrint('RECEIPT', data)
       const res = await printJobAction({
         type: 'RECEIPT',
         data,
@@ -1705,11 +1731,11 @@ export default function POSTerminal({
         setBillPrintStatus('printed')
         setTimeout(() => setBillPrintStatus(null), 2500)
       } else {
-        alert('Bill print failed: ' + (res.error || 'Unknown error'))
+        alert('Bill print notice: ' + (res.error || 'Direct print failed'))
         setBillPrintStatus(null)
       }
     } catch (e: any) {
-      alert('Bill print failed: ' + e.message)
+      alert('Bill print error: ' + e.message)
       setBillPrintStatus(null)
     }
   }
@@ -1728,11 +1754,11 @@ export default function POSTerminal({
         setTestPrintStatus('printed')
         setTimeout(() => setTestPrintStatus(null), 2500)
       } else {
-        alert('Test print failed: ' + (res.error || 'Unknown error'))
+        alert('Test print notice: ' + (res.error || 'Direct print failed'))
         setTestPrintStatus(null)
       }
     } catch (e: any) {
-      alert('Test print failed: ' + e.message)
+      alert('Test print error: ' + e.message)
       setTestPrintStatus(null)
     }
   }
@@ -3636,7 +3662,7 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
         )}
       </main>
 
-      {/* ── Hidden Thermal Print Ticket (POSIO QX300 / 80mm ESC/POS compatible) ── */}
+            {/* ── Hidden Thermal Print Ticket (POSIO QX300 / 80mm ESC/POS compatible) ── */}
       <div className="print-area">
         <div className="print-ticket-wrapper">
           <div className="print-title">** KITCHEN ORDER TICKET **</div>
@@ -3669,7 +3695,6 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
           <div className="print-footer">** PLEASE PREPARE **</div>
         </div>
       </div>
-
       {/* ─── Modern Light Theme Styles ────────────── */}
       <style jsx>{`\
         .pos-shell {

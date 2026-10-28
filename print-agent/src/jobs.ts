@@ -1,6 +1,10 @@
 import net from 'net'
+import path from 'path'
+import fs from 'fs'
 import { execSync } from 'child_process'
 import { writeFileSync, unlinkSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import { formatReceipt } from './templates/receipt'
 import { formatKOT } from './templates/kot'
 
@@ -48,7 +52,7 @@ export async function processPrintJob(job: any) {
   const PRINTER_IP = process.env.PRINTER_IP || process.env.KITCHEN_PRINTER_IP
   const PRINTER_PORT = Number(process.env.PRINTER_PORT ?? 9100)
 
-  const RECEIPT_PRINTER = process.env.RECEIPT_PRINTER_NAME ?? 'POS-80'
+  const RECEIPT_PRINTER = process.env.RECEIPT_PRINTER_NAME ?? 'POSIO QX300'
   const KITCHEN_PRINTER = process.env.KITCHEN_PRINTER_NAME ?? RECEIPT_PRINTER
 
   let text: string
@@ -71,12 +75,22 @@ export async function processPrintJob(job: any) {
     return
   }
 
-  // 2. Otherwise fall back to Windows Print Queue
-  const tmpFile = `C:\\Windows\\Temp\\pos_print_${job.id}.txt`
+  // 2. Otherwise fall back to Windows Print Queue via raw spooler
+  const tmpFile = join(tmpdir(), `pos_print_${job.id}.bin`)
   writeFileSync(tmpFile, text, 'ascii')
 
+  let rawScript = path.resolve(__dirname, '../print-raw.ps1')
+  if (!fs.existsSync(rawScript)) {
+    rawScript = path.resolve(__dirname, '../../src/utils/print-raw.ps1')
+  }
+
   try {
-    execSync(`print /D:"${printerName}" "${tmpFile}"`)
+    try {
+      execSync(`powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${rawScript}" -PrinterName "${printerName}" -FilePath "${tmpFile}"`, { stdio: 'pipe' })
+    } catch {
+      // Fallback to legacy print /D:
+      execSync(`print /D:"${printerName}" "${tmpFile}"`)
+    }
   } finally {
     try { unlinkSync(tmpFile) } catch {}
   }

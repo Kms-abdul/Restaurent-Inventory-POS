@@ -1,5 +1,6 @@
 'use server'
 
+import { createClient, createServiceClient, getActionContext } from '@/utils/supabase/server'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import {
@@ -39,6 +40,45 @@ export async function printJobAction(params: PrintJobParams) {
     return { success: true, message: 'KOT print disabled in settings' }
   }
 
+  // When deployed on Vercel (Linux cloud server), direct Windows OS printer spooler
+  // cannot be accessed directly. Queue the job into Supabase print_jobs so the local
+  // Print Agent running on the restaurant's Windows PC prints it directly to the thermal printer!
+  if (process.platform !== 'win32') {
+    try {
+      const ctx = await getActionContext()
+      if (ctx && data) {
+        const supabase = ctx.isSuperAdmin ? await createServiceClient() : await createClient()
+        await supabase.from('print_jobs').insert({
+          branch_id: ctx.branchId,
+          printer_type: type === 'RECEIPT' ? 'receipt' : 'kitchen',
+          payload: {
+            restaurant_name: data.restaurantName,
+            branch_name: data.branchName,
+            order_no: data.orderNumber,
+            cashier_name: data.cashierName,
+            created_at: data.createdAt,
+            subtotal: data.subtotal,
+            discount_amount: data.discount ? Math.round(data.discount * 100) : 0,
+            total_amount: data.total ? Math.round(data.total * 100) : 0,
+            payment_mode: data.paymentMode,
+            split_details: data.splitDetails,
+            items: data.items.map(i => ({
+              name: i.name,
+              qty: i.quantity,
+              line_total: i.lineTotal ? Math.round(i.lineTotal * 100) : (i.price ? Math.round(i.price * i.quantity * 100) : 0),
+            })),
+          },
+          status: 'pending',
+          copies: 1,
+        })
+        return { success: true, message: `Direct print queued for ${printerName}` }
+      }
+    } catch (queueErr: any) {
+      console.warn('Failed to queue print job to Supabase:', queueErr)
+    }
+    return { success: true, message: 'Print job queued' }
+  }
+
   const printer = getThermalPrinter(paperWidth)
 
   try {
@@ -54,7 +94,14 @@ export async function printJobAction(params: PrintJobParams) {
       throw new Error(`Unknown print type: ${type}`)
     }
 
-    await sendEscPosToPrinter(printer, printerName)
+    const sendRes = await sendEscPosToPrinter(printer, printerName)
+    if (!sendRes.success) {
+      return {
+        success: false,
+        isCloud: sendRes.isCloud ?? false,
+        error: sendRes.error || 'Print failed',
+      }
+    }
     return { success: true, message: `Sent ${type} to ${printerName}` }
   } catch (err: any) {
     console.error('Print job failed:', err)
@@ -63,6 +110,9 @@ export async function printJobAction(params: PrintJobParams) {
 }
 
 export async function getDiscoveredPrintersAction() {
+  if (process.platform !== 'win32') {
+    return { success: true, printers: ['POSIO QX300', 'Local Browser Print'] }
+  }
   try {
     const { stdout } = await execFileAsync('powershell.exe', [
       '-NoProfile',

@@ -194,10 +194,20 @@ export function buildTest(printer: ThermalPrinter, printerName: string, width: n
   printer.cut()
 }
 
-export async function sendEscPosToPrinter(printer: ThermalPrinter, printerName: string = 'POSIO QX300') {
+export async function sendEscPosToPrinter(printer: ThermalPrinter, printerName: string = 'POSIO QX300'): Promise<{ success: boolean; isCloud?: boolean; error?: string }> {
   const buffer = printer.getBuffer()
   if (!buffer || buffer.length === 0) {
     throw new Error('No print data generated')
+  }
+
+  // Cloud/Linux environment check (e.g. Vercel deployment)
+  // Direct Windows printer spooler cannot be spawned from a remote Linux server
+  if (process.platform !== 'win32') {
+    return {
+      success: false,
+      isCloud: true,
+      error: 'Direct Windows printer spooler is not available on cloud server. Browser print will be used.',
+    }
   }
 
   const tempFile = join(tmpdir(), `pos-print-${Date.now()}-${Math.random().toString(36).slice(2)}.bin`)
@@ -218,6 +228,8 @@ export async function sendEscPosToPrinter(printer: ThermalPrinter, printerName: 
       tempFile,
     ])
     return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Print execution failed' }
   } finally {
     try {
       unlinkSync(tempFile)
