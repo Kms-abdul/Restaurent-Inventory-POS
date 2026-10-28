@@ -1788,9 +1788,14 @@ export default function POSTerminal({
   // KDS Aggregated Chef Items (To Cook & To Pack)
   // Only include orders that are waiting to be cooked / packed (exclude ready/packed and served)
   const activeKDSOrders = useMemo(
-    () => recentOrders.filter(
-      o => o.fulfillment !== 'ready' && o.fulfillment !== 'served' && o.status !== 'voided'
-    ),
+    () => recentOrders.filter(o => {
+      if (o.fulfillment === 'ready' || o.fulfillment === 'served' || o.status === 'voided') return false
+      if (o.status === 'active') return true
+      // Checked-out dine-in/held orders drop off even if the chef never marked them packed;
+      // paid-upfront takeaways stay until packed because the kitchen still has to cook them
+      const isDineIn = Boolean((o.table_number || '').trim() || /round|table|hold|\bT\d+\b/i.test(o.notes || ''))
+      return !isDineIn
+    }),
     [recentOrders]
   )
 
@@ -3366,69 +3371,56 @@ export default function POSTerminal({
 
 
 
-            {/* ── Visible on-screen KOT card ── */}
-            <div className="kot-ticket-card">
-              <div className="kot-ticket-header">
-                <div style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: '0.25rem' }}>{restaurantName}</div>
-                <h3>KITCHEN ORDER TICKET</h3>
-                <div className="kot-divider" />
-                <h1>ORDER #{lastOrder?.order_no ?? nextOrderNo - 1}</h1>
-                <div className="kot-divider" />
+            {/* ── Open KOTs: every order not yet checked out; drops off after checkout ── */}
+            {pendingOrders.length === 0 ? (
+              <div className="kot-ticket-card">
+                <p style={{ color: '#666', textAlign: 'center', padding: '1rem' }}>No open KOTs. All orders are checked out.</p>
               </div>
-
-              <div className="kot-ticket-body">
-                <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.5rem' }}>
-                  🕐 {lastOrder?.time ?? '—'} &nbsp;·&nbsp; 👤 {cashierName}
-                </div>
-                {lastOrder?.notes && (
-                  <div className="kot-order-tag">🏷️ {lastOrder.notes}</div>
-                )}
-                {lastOrder?.total === 0 && (
-                  <div className="kot-complimentary-badge">★ COMPLIMENTARY / RELATIVE (₹0.00) ★</div>
-                )}
-                <div className="kot-items-heading">ITEMS:</div>
-                <div className="kot-items-list">
-                  {(!lastOrder || lastOrder.items.length === 0) ? (
-                    <p style={{ color: '#666', textAlign: 'center', padding: '1rem' }}>No recent items to display</p>
-                  ) : (
-                    lastOrder.items.map((item, idx) => (
-                      <div key={idx} className="kot-item-line">
-                        <span>{item.name || 'Item'}</span>
-                        <span style={{ fontWeight: 700 }}>× {item.qty}</span>
+            ) : (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.25rem', justifyContent: 'center', alignItems: 'flex-start' }}>
+                {[...pendingOrders]
+                  .sort((x, y) => new Date(y.created_at).getTime() - new Date(x.created_at).getTime())
+                  .map(o => (
+                    <div key={o.id} className="kot-ticket-card">
+                      <div className="kot-ticket-header">
+                        <div style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: '0.25rem' }}>{restaurantName}</div>
+                        <h3>KITCHEN ORDER TICKET</h3>
+                        <div className="kot-divider" />
+                        <h1>ORDER #{o.order_no}</h1>
+                        {o.table_label && <h3>TABLE {o.table_label}</h3>}
+                        <div className="kot-divider" />
                       </div>
-                    ))
-                  )}
-                </div>
-                {lastOrder && lastOrder.discount && lastOrder.discount > 0 ? (
-                  <>
-                    <div className="kot-divider" />
-                    <div className="kot-summary-row">
-                      <span>Subtotal:</span>
-                      <span>₹{(lastOrder.subtotal ?? (lastOrder.total + lastOrder.discount)).toFixed(2)}</span>
-                    </div>
-                    <div className="kot-summary-row kot-disc-row">
-                      <span>Discount:</span>
-                      <span>-₹{lastOrder.discount.toFixed(2)}</span>
-                    </div>
-                    <div className="kot-summary-row kot-total-row">
-                      <span>Total:</span>
-                      <span>₹{lastOrder.total.toFixed(2)}</span>
-                    </div>
-                  </>
-                ) : null}
-                <div className="kot-divider" />
-              </div>
 
-              <div className="kot-ticket-footer no-print">
-                <button
-                  type="button"
-                  onClick={() => handlePrintReceipt()}
-                  className="kot-print-again-btn"
-                >
-                  🖨️ Print KOT
-                </button>
+                      <div className="kot-ticket-body">
+                        <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.5rem' }}>
+                          🕐 {new Date(o.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                          &nbsp;·&nbsp; {o.type === 'dine-in' ? '🍽️ Dine-in' : '🥡 Takeaway'}
+                        </div>
+                        <div className="kot-items-heading">ITEMS:</div>
+                        <div className="kot-items-list">
+                          {o.items.map((item, idx) => (
+                            <div key={idx} className="kot-item-line">
+                              <span>{item.name || 'Item'}</span>
+                              <span style={{ fontWeight: 700 }}>× {item.qty}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="kot-divider" />
+                      </div>
+
+                      <div className="kot-ticket-footer no-print">
+                        <button
+                          type="button"
+                          onClick={() => handlePrintKOT(o)}
+                          className="kot-print-again-btn"
+                        >
+                          🖨️ Print KOT
+                        </button>
+                      </div>
+                    </div>
+                  ))}
               </div>
-            </div>
+            )}
           </div>
         )}
 

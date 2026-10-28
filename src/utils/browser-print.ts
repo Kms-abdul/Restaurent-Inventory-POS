@@ -28,7 +28,6 @@ export function buildHtml(type: 'KOT' | 'RECEIPT', data: ThermalOrderData, opts:
   if (type === 'KOT') {
     body = `
       <div class="c">
-        <br>
         <div class="b">KITCHEN ORDER TICKET</div>
         ${line('-')}
         <div class="b quad">ORDER #${esc(data.orderNumber)}</div>
@@ -48,7 +47,7 @@ export function buildHtml(type: 'KOT' | 'RECEIPT', data: ThermalOrderData, opts:
       `<div class="tbl ${cls}"><span>${esc(item)}</span><span class="c">${esc(qty)}</span><span class="r">${esc(total)}</span></div>`
 
     body = `
-      <div class="c"><br><div class="b">${esc(name)}</div></div>
+      <div class="c b">${esc(name)}</div>
       ${line()}
       ${leftRight(`Order: #${data.orderNumber}`, `${dateStr} ${timeStr}`)}
       ${table ? `<div class="b">Table: ${esc(table)}</div>` : ''}
