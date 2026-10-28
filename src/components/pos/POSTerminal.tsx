@@ -49,6 +49,7 @@ interface RecentOrder {
   total_amount?: number | null
   discount_amount?: number | null
   payment_mode?: string | null
+  table_number?: string | null
   notes?: string | null
   status?: string | null
   fulfillment?: string | null
@@ -84,11 +85,12 @@ interface Props {
 }
 
 type PaymentMode = 'cash' | 'card' | 'upi'
-type ActiveTab = 'order' | 'kot' | 'kds' | 'printer'
+type ActiveTab = 'order' | 'tables' | 'kot' | 'kds' | 'printer'
 
 const POS_TABS: { id: ActiveTab; label: string; icon: string }[] = [
-  { id: 'order', label: 'Order', icon: '📋' },
-  { id: 'kot', label: 'KOT', icon: '🖨️' },
+  { id: 'order', label: 'POS Menu', icon: '📋' },
+  { id: 'tables', label: 'Live Tables', icon: '🍽️' },
+  { id: 'kot', label: 'KOT View', icon: '🖨️' },
   { id: 'kds', label: 'Kitchen KDS', icon: '👨‍🍳' },
   { id: 'printer', label: 'Printer', icon: '⚙️' },
 ]
@@ -142,7 +144,8 @@ export default function POSTerminal({
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [cart, setCart] = useState<CartItem[]>([])
-  const [mobileOrderView, setMobileOrderView] = useState<'menu' | 'cart'>('menu')
+  const [mobileOrderView, setMobileOrderView] = useState<'menu' | 'cart' | 'tables'>('menu')
+  const [liveOrdersFilter, setLiveOrdersFilter] = useState<'all' | 'dine-in' | 'takeaway'>('all')
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('cash')
   const [isPending, startTransition] = useTransition()
   const [nextOrderNo, setNextOrderNo] = useState(1)
@@ -347,10 +350,28 @@ export default function POSTerminal({
         // Sync pending active orders from database so reload/refresh keeps them
         const activeOrders = orders.filter(o => o.status === 'active')
         const activePending: PendingOrder[] = activeOrders.map(o => {
-          let tbl = ''
-          if (o.notes) {
-            const match = o.notes.match(/\[([^\]]+)\]/) || o.notes.match(/^([^—|]+)—/)
-            if (match) tbl = match[1].trim()
+          let tbl = (o.table_number || '').trim()
+          if (!tbl && o.notes) {
+            const cleanedNotes = o.notes.replace(/\[(HOLD|REPLACED|ADD-ON|VOIDED)[^\]]*\]/gi, '').trim()
+            const prefixMatch = cleanedNotes.match(/^([^—|]+)—/)
+            if (prefixMatch) {
+              tbl = prefixMatch[1].trim()
+            } else {
+              const bracketMatch = cleanedNotes.match(/\[([^\]]+)\]/)
+              if (bracketMatch && !bracketMatch[1].toLowerCase().includes('off') && !bracketMatch[1].toLowerCase().includes('relative')) {
+                tbl = bracketMatch[1].trim()
+              }
+            }
+          }
+          // Sanitize: ensure 'HOLD' is never used as table label
+          if (tbl.toUpperCase() === 'HOLD') {
+            tbl = ''
+            if (o.notes) {
+              const subMatch = o.notes.match(/\b(T\d+|Table\s*\d+)\b/i)
+              if (subMatch) {
+                tbl = subMatch[1].toUpperCase().replace(/\s+/, ' ')
+              }
+            }
           }
           const isDine = Boolean(tbl || o.notes?.includes('Round') || o.notes?.toLowerCase().includes('table'))
           return {
@@ -860,8 +881,247 @@ export default function POSTerminal({
     })
   }
 
+  // ─── UNIFIED CHECKOUT HANDLER ──────────────────────────────────────────────
+  // Settle current cart and/or selected occupied table in one clear, robust action.
+  const handleUnifiedCheckout = () => {
+    const label = tableLabel.trim()
+    const tableOrders = label ? (dineInByTable[label] || []) : []
+
+    if (cart.length > 0) {
+      if (tableOrders.length > 0) {
+        setCheckoutStatus('pending')
+        startTransition(async () => {
+          try {
+            const roundNo = tableOrders.length + 1
+            const roundNote = `${label} — Round ${roundNo}`
+            const holdRes = await holdOrder({
+              branchId,
+              restaurantId,
+              tableLabel: label,
+              notes: roundNote,
+              items: cart,
+              restaurantName: printerSettings.headerText || restaurantName,
+              branchName: printerSettings.tagline || branchName,
+              cashierName,
+              enableKotPrint: printerSettings.enableKotPrint,
+            })
+
+            const allOrderIds = [...tableOrders.map(o => o.id), holdRes.order_id]
+            const totalPaise = tableOrders.reduce((sum, o) => sum + o.total_amount, 0) + subtotalPaise
+            await checkoutMultipleOrders({
+              orderIds: allOrderIds,
+              paymentMode,
+              totalAmount: totalPaise,
+            })
+
+            const allItemsMerged = [...tableOrders.flatMap(o => o.items), ...cart]
+            const printData: ThermalOrderData = {
+              orderNumber: holdRes.order_no,
+              createdAt: new Date().toISOString(),
+              restaurantName: printerSettings.headerText || restaurantName || 'RESTAURANT',
+              branchName: `${printerSettings.tagline || branchName} | ${label}`,
+              cashierName,
+              subtotal: totalPaise / 100,
+              discount: discountRupees,
+              total: (totalPaise - discountPaise) / 100,
+              paymentMode: finalTotalRupees === 0 ? 'Complimentary' : paymentMode,
+              items: allItemsMerged.map(i => ({
+                name: i.name,
+                quantity: i.qty,
+                price: i.unitPrice ? i.unitPrice / 100 : undefined,
+                lineTotal: i.lineTotal ? i.lineTotal / 100 : undefined,
+              })),
+            }
+            triggerPrints(printData, 'RECEIPT')
+            if (printerSettings.enableKotPrint) {
+              triggerPrints({
+                ...printData,
+                items: cart.map(i => ({ name: i.name, quantity: i.qty, price: i.unitPrice / 100, lineTotal: i.lineTotal / 100 })),
+              }, 'KOT')
+            }
+
+            setCart([])
+            clearDiscount()
+            setTableLabel('')
+            setCheckoutStatus('success')
+            setMobileOrderView('menu')
+            setTimeout(() => setCheckoutStatus('idle'), 3000)
+            void loadOrders()
+          } catch (e: unknown) {
+            console.error('Checkout error:', e)
+            setCheckoutStatus('error')
+            alert('Failed to checkout table: ' + (e instanceof Error ? e.message : 'Unknown error'))
+            setTimeout(() => setCheckoutStatus('idle'), 3000)
+          }
+        })
+      } else {
+        handleCheckoutFromCart()
+      }
+    } else if (tableOrders.length > 0) {
+      const tableTotal = tableOrders.reduce((sum, o) => sum + o.total_amount, 0)
+      setCheckoutTarget({
+        type: 'table',
+        orders: tableOrders,
+        tableLabel: label,
+        totalAmount: tableTotal,
+      })
+    }
+  }
+
+  // ─── Dine-In Checkout handler ─────────────────────────────────────────────
+  // Settles the selected table: if cart has new items, adds them or settles all rounds.
+  const handleDineInCheckout = () => {
+    const label = tableLabel.trim()
+    if (!label) {
+      alert('Please select a table to checkout (e.g. T1, T2).')
+      return
+    }
+
+    const tableOrders = dineInByTable[label] || []
+
+    // Case 1: Table already has orders in kitchen, cart is empty -> checkout existing table orders
+    if (tableOrders.length > 0 && cart.length === 0) {
+      const tableTotal = tableOrders.reduce((sum, o) => sum + o.total_amount, 0)
+      setCheckoutTarget({
+        type: 'table',
+        orders: tableOrders,
+        tableLabel: label,
+        totalAmount: tableTotal,
+      })
+      return
+    }
+
+    // Case 2: Cart has items
+    if (cart.length > 0) {
+      setCheckoutStatus('pending')
+      startTransition(async () => {
+        try {
+          if (tableOrders.length > 0) {
+            // Send current cart items as next round first
+            const roundNo = tableOrders.length + 1
+            const roundNote = `${label} — Round ${roundNo}`
+            const holdRes = await holdOrder({
+              branchId,
+              restaurantId,
+              tableLabel: label,
+              notes: roundNote,
+              items: cart,
+              restaurantName: printerSettings.headerText || restaurantName,
+              branchName: printerSettings.tagline || branchName,
+              cashierName,
+            })
+            // Settle all rounds together
+            const allOrderIds = [...tableOrders.map(o => o.id), holdRes.order_id]
+            const totalPaise = tableOrders.reduce((sum, o) => sum + o.total_amount, 0) + subtotalPaise
+            await checkoutMultipleOrders({
+              orderIds: allOrderIds,
+              paymentMode,
+              totalAmount: totalPaise,
+            })
+
+            const allItems = [...tableOrders.flatMap(o => o.items), ...cart]
+            const printData: ThermalOrderData = {
+              orderNumber: holdRes.order_no,
+              createdAt: new Date().toISOString(),
+              restaurantName: printerSettings.headerText || restaurantName || 'RESTAURANT',
+              branchName: `${printerSettings.tagline || branchName} | ${label}`,
+              cashierName,
+              subtotal: totalPaise / 100,
+              discount: 0,
+              total: totalPaise / 100,
+              paymentMode,
+              items: allItems.map(i => ({ name: i.name, quantity: i.qty, price: i.unitPrice / 100, lineTotal: i.lineTotal / 100 })),
+            }
+            triggerPrints(printData, 'RECEIPT')
+
+            setPendingOrders(prev => prev.filter(o => !(o.type === 'dine-in' && o.table_label === label)))
+            setCart([])
+            clearDiscount()
+            setOrderNotes('')
+            setTableLabel('')
+            setCheckoutStatus('success')
+            setMobileOrderView('menu')
+            setTimeout(() => setCheckoutStatus('idle'), 3000)
+            void loadOrders()
+          } else {
+            // Immediate table checkout (Direct Dine-In checkout)
+            const orderTime = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+            const invoiceStr = `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(nextOrderNo).padStart(4, '0')}`
+
+            let combinedNotes = orderNotes.trim()
+            if (discountPaise > 0) {
+              const discTag = discountReason.trim() || (isRelativeOrFree ? 'Relative (Free)' : `${discountValue}% Off`)
+              combinedNotes = combinedNotes ? `${combinedNotes} [${discTag}]` : `[${discTag}]`
+            }
+            const finalNotes = `[${label}]${combinedNotes ? ` ${combinedNotes}` : ''}`
+
+            const result = await createPOSOrder({
+              branchId,
+              restaurantId,
+              tableNumber: label,
+              paymentMode,
+              totalAmount: finalTotalPaise,
+              discountAmount: discountPaise,
+              notes: finalNotes,
+              items: cart,
+            })
+
+            const createdOrder = {
+              order_no: result.order_no,
+              invoice: invoiceStr,
+              subtotal: subtotalRupees,
+              discount: discountRupees,
+              discount_reason: discountReason || (isRelativeOrFree ? 'Relative / Free' : ''),
+              total: finalTotalRupees,
+              items: [...cart],
+              time: orderTime,
+              payment_mode: finalTotalRupees === 0 ? 'Complimentary' : paymentMode,
+              notes: finalNotes,
+            }
+
+            setLastOrder(createdOrder)
+            setNextOrderNo(result.order_no + 1)
+            setCart([])
+            clearDiscount()
+            setOrderNotes('')
+            setTableLabel('')
+
+            const printData: ThermalOrderData = {
+              orderNumber: result.order_no,
+              createdAt: new Date().toISOString(),
+              restaurantName: printerSettings.headerText || restaurantName || 'CHINESE NAWAB',
+              branchName: `${printerSettings.tagline || branchName} | ${label}`,
+              cashierName,
+              subtotal: subtotalRupees,
+              discount: discountRupees,
+              total: finalTotalRupees,
+              paymentMode: finalTotalRupees === 0 ? 'Complimentary' : paymentMode,
+              items: createdOrder.items.map(i => ({
+                name: i.name,
+                quantity: i.qty,
+                price: i.unitPrice ? i.unitPrice / 100 : undefined,
+                lineTotal: i.lineTotal ? i.lineTotal / 100 : undefined,
+              })),
+            }
+            triggerPrints(printData, 'BOTH')
+
+            setCheckoutStatus('success')
+            setBillingStatus('success')
+            setMobileOrderView('menu')
+            setTimeout(() => { setCheckoutStatus('idle'); setBillingStatus(null) }, 3000)
+            void loadOrders()
+          }
+        } catch (err: unknown) {
+          setCheckoutStatus('error')
+          alert('Checkout failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
+          setTimeout(() => setCheckoutStatus('idle'), 3000)
+        }
+      })
+    }
+  }
+
   // ─── CHECKOUT from current cart (no prior KOT/HOLD) ──────────────────────
-  // Directly creates + settles an order in one step (like old Complete Billing).
+  // Directly creates + settles an order in one step (Takeaway direct or instant checkout).
   const handleCheckoutFromCart = () => {
     if (cart.length === 0) return
     setCheckoutStatus('pending')
@@ -876,14 +1136,21 @@ export default function POSTerminal({
           combinedNotes = combinedNotes ? `${combinedNotes} [${discTag}]` : `[${discTag}]`
         }
 
+        const effectiveTable = tableLabel.trim() || undefined
+        if (effectiveTable && !combinedNotes.includes(effectiveTable)) {
+          combinedNotes = `[${effectiveTable}]${combinedNotes ? ` ${combinedNotes}` : ''}`
+        }
+
         const result = await createPOSOrder({
           branchId,
           restaurantId,
+          tableNumber: effectiveTable,
           paymentMode,
           totalAmount: finalTotalPaise,
           discountAmount: discountPaise,
           notes: combinedNotes || undefined,
           items: cart,
+          enableKotPrint: printerSettings.enableKotPrint,
         })
 
         const createdOrder = {
@@ -910,7 +1177,9 @@ export default function POSTerminal({
           orderNumber: result.order_no,
           createdAt: new Date().toISOString(),
           restaurantName: printerSettings.headerText || restaurantName || 'CHINESE NAWAB',
-          branchName: printerSettings.tagline || branchName,
+          branchName: effectiveTable
+            ? `${printerSettings.tagline || branchName} | ${effectiveTable}`
+            : printerSettings.tagline || branchName,
           cashierName,
           subtotal: subtotalRupees,
           discount: discountRupees,
@@ -1023,6 +1292,8 @@ export default function POSTerminal({
       })
     return groups
   }, [pendingOrders])
+
+  const dineInTableKeys = useMemo(() => Object.keys(dineInByTable), [dineInByTable])
 
   const hasPending = pendingOrders.length > 0
 
@@ -1270,6 +1541,221 @@ export default function POSTerminal({
 
 
 
+  // ─── DEDICATED LIVE TABLES FLOOR SCREEN (DESKTOP & MOBILE) ─────────────────────
+  const renderTablesScreen = () => {
+    const totalDineInPaise = Object.values(dineInByTable).flat().reduce((s, o) => s + o.total_amount, 0)
+    const occupiedCount = Object.keys(dineInByTable).length
+    const totalTablesCount = allSelectableTables.length
+    const vacantCount = Math.max(0, totalTablesCount - occupiedCount)
+
+    return (
+      <div className="live-orders-screen">
+        {/* Header Bar */}
+        <div className="live-orders-header-row">
+          <div className="live-orders-title-block">
+            <h1>
+              <span>🍽️</span>
+              <span>Live Tables Floor</span>
+            </h1>
+            <div className="live-orders-subtitle">
+              Interactive table floor plan: tap any table to view orders, add rounds, or settle bills.
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn-quick-tbl-action"
+              style={{ padding: '0.45rem 0.85rem', fontSize: '0.85rem' }}
+              onClick={() => void loadOrders()}
+            >
+              🔄 Refresh Floor
+            </button>
+            <button
+              type="button"
+              className="btn-quick-tbl-action"
+              style={{ padding: '0.45rem 0.85rem', fontSize: '0.85rem', background: '#4f46e5', color: '#fff', borderColor: '#4338ca' }}
+              onClick={() => {
+                if (!tableLabel) setTableLabel('T1')
+                setActiveTab('order')
+                setMobileOrderView('menu')
+              }}
+            >
+              ＋ New Dine-In Order
+            </button>
+          </div>
+        </div>
+
+        {/* Live KPI Bar */}
+        <div className="live-kpi-bar">
+          <div className="live-kpi-box">
+            <div className="live-kpi-icon" style={{ background: '#fef3c7', color: '#d97706' }}>🪑</div>
+            <div className="live-kpi-info">
+              <span className="live-kpi-num">{occupiedCount} <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 600 }}>/ {totalTablesCount}</span></span>
+              <span className="live-kpi-lbl">Occupied Tables</span>
+            </div>
+          </div>
+
+          <div className="live-kpi-box">
+            <div className="live-kpi-icon" style={{ background: '#dcfce7', color: '#16a34a' }}>🟢</div>
+            <div className="live-kpi-info">
+              <span className="live-kpi-num">{vacantCount}</span>
+              <span className="live-kpi-lbl">Available Tables</span>
+            </div>
+          </div>
+
+          <div className="live-kpi-box kpi-total-box">
+            <div className="live-kpi-icon" style={{ background: '#e0e7ff', color: '#4338ca' }}>💰</div>
+            <div className="live-kpi-info">
+              <span className="live-kpi-num">₹{(totalDineInPaise / 100).toFixed(2)}</span>
+              <span className="live-kpi-lbl">Dine-In Running Bill</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Tables Floor Grid */}
+        <div className="dinein-floor-grid">
+          {allSelectableTables.map(t => {
+            const orders = dineInByTable[t] || []
+            const isOcc = orders.length > 0
+            const tableTotal = orders.reduce((s, o) => s + o.total_amount, 0)
+            const firstOrder = orders[0]
+            const elapsedMinutes = isOcc ? Math.max(0, Math.floor((Date.now() - new Date(firstOrder.created_at).getTime()) / 60000)) : 0
+
+            return (
+              <div key={t} className={`dinein-floor-card ${isOcc ? 'card-occupied' : 'card-available'}`}>
+                <div className="dinein-card-header">
+                  <div className="dinein-card-title">
+                    <span className="dinein-tbl-icon">{isOcc ? '🍽️' : '🪑'}</span>
+                    <span className="dinein-tbl-name">Table {t}</span>
+                  </div>
+                  <span className={`dinein-status-badge ${isOcc ? 'badge-occ' : 'badge-avail'}`}>
+                    {isOcc ? `● Occupied (${elapsedMinutes < 1 ? 'Just now' : `${elapsedMinutes}m`})` : '🟢 Available'}
+                  </span>
+                </div>
+
+                {isOcc ? (
+                  <div className="dinein-card-content">
+                    <div className="dinein-rounds-summary">
+                      <span className="dinein-rounds-pill">
+                        {orders.length} Round{orders.length > 1 ? 's' : ''}
+                      </span>
+                      <span className="dinein-total-amt">₹{(tableTotal / 100).toFixed(2)}</span>
+                    </div>
+
+                    <div className="dinein-items-scroll">
+                      {orders.map((o, ri) => (
+                        <div key={o.id} className="dinein-round-section">
+                          {orders.length > 1 && (
+                            <div className="dinein-round-lbl">Round {ri + 1} (#{o.order_no})</div>
+                          )}
+                          {o.items.map((it, idx) => (
+                            <div key={idx} className="live-item-row">
+                              <span className="live-item-qty">{it.qty}x</span>
+                              <span className="live-item-name">{it.name}</span>
+                              <span className="live-item-price">₹{(it.lineTotal / 100).toFixed(0)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="dinein-card-actions">
+                      <button
+                        type="button"
+                        className="btn-dinein-checkout"
+                        onClick={() => setCheckoutTarget({ type: 'table', orders, tableLabel: t, totalAmount: tableTotal })}
+                        disabled={isPending}
+                      >
+                        💳 Settle &amp; Checkout (₹{(tableTotal / 100).toFixed(0)})
+                      </button>
+
+                      <div className="dinein-sub-action-row">
+                        <button
+                          type="button"
+                          className="btn-quick-tbl-action"
+                          onClick={() => {
+                            setTableLabel(t)
+                            setActiveTab('order')
+                            setMobileOrderView('menu')
+                          }}
+                          title="Add more items (Round 2) to this table"
+                        >
+                          ➕ Add
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-quick-tbl-action"
+                          onClick={() => {
+                            const printData: ThermalOrderData = {
+                              orderNumber: firstOrder.order_no,
+                              createdAt: firstOrder.created_at,
+                              restaurantName: printerSettings.headerText || restaurantName || 'RESTAURANT',
+                              branchName: `${printerSettings.tagline || branchName} | ${t}`,
+                              cashierName,
+                              subtotal: tableTotal / 100,
+                              discount: 0,
+                              total: tableTotal / 100,
+                              paymentMode: 'none',
+                              items: orders.flatMap(o => o.items).map(i => ({ name: i.name, quantity: i.qty, price: i.unitPrice / 100, lineTotal: i.lineTotal / 100 })),
+                            }
+                            triggerPrints(printData, 'KOT')
+                          }}
+                          title="Re-print Kitchen Order Ticket"
+                        >
+                          🖨️ KOT
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-quick-tbl-action"
+                          disabled={cart.length === 0}
+                          onClick={() => setReplaceModal({ table: t, orders })}
+                          title="Replace table order with cart items"
+                        >
+                          🔄 Replace
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-quick-tbl-action"
+                          onClick={() => setTransferModal({ fromTable: t, orders })}
+                          title="Transfer order to another table"
+                        >
+                          🔀 Move
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-quick-tbl-action btn-quick-tbl-danger"
+                          onClick={() => setDeleteModal({ table: t, orders })}
+                          title="Cancel/void table tickets"
+                        >
+                          🗑️ Void
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="dinein-card-content dinein-empty-content">
+                    <div className="dinein-empty-text">Table is clean and ready for guests.</div>
+                    <button
+                      type="button"
+                      className="btn-dinein-start"
+                      onClick={() => {
+                        setTableLabel(t)
+                        setActiveTab('order')
+                        setMobileOrderView('menu')
+                      }}
+                    >
+                      ➕ Start Order for Table {t}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="pos-shell">
       {/* ─── Top Header (Screenshots 2, 3, 4, 5) ───────────────────────── */}
@@ -1339,6 +1825,9 @@ export default function POSTerminal({
             >
               <span className="tab-icon">{tab.icon}</span>
               <span>{tab.label}</span>
+              {tab.id === 'tables' && Object.keys(dineInByTable).length > 0 && (
+                <span className="tab-live-badge">{Object.keys(dineInByTable).length}</span>
+              )}
             </button>
           ))}
         </div>
@@ -1698,8 +2187,9 @@ export default function POSTerminal({
                       </div>
                     </div>
 
-                    {/* ── Table picker + Order-type label ──────── */}
-                    <div className="table-label-row">
+                    {/* ── Table Quick Picker ── */}
+                    <div className="dinein-cart-panel">
+                      <div className="dinein-picker-label">Select Table:</div>
                       <div className="table-quick-picker">
                         {allSelectableTables.map(t => {
                           const isOcc = Boolean(dineInByTable[t] && dineInByTable[t].length > 0)
@@ -1708,7 +2198,7 @@ export default function POSTerminal({
                               key={t}
                               type="button"
                               className={`table-quick-btn ${tableLabel === t ? 'active' : ''} ${isOcc ? 'table-quick-btn-occupied' : ''}`}
-                              onClick={() => setTableLabel(prev => prev === t ? '' : t)}
+                              onClick={() => setTableLabel(t)}
                               title={isOcc ? `${t} (Occupied - ₹${(dineInByTable[t].reduce((s,o)=>s+o.total_amount,0)/100).toFixed(0)})` : `${t} (Available)`}
                             >
                               {t}
@@ -1717,235 +2207,143 @@ export default function POSTerminal({
                           )
                         })}
                       </div>
-                      <input
-                        type="text"
-                        value={tableLabel}
-                        onChange={e => setTableLabel(e.target.value)}
-                        placeholder="Select or enter table (e.g. T1, T2) or customer name"
-                        className="table-label-input"
-                        maxLength={40}
-                      />
 
-                      {/* Quick action bar if selected table has active running order */}
-                      {tableLabel && Boolean(dineInByTable[tableLabel]?.length) && (
-                        <div className="table-quick-active-bar">
-                          <span className="table-quick-active-title">
-                            🍽️ {tableLabel} Active (₹{(dineInByTable[tableLabel].reduce((s,o)=>s+o.total_amount,0)/100).toFixed(0)})
-                          </span>
-                          <div className="table-quick-active-btns">
-                            <button
-                              type="button"
-                              className="btn-quick-tbl-action"
-                              onClick={() => handleLoadTableItems(tableLabel)}
-                              title="Load existing items into cart to change or edit"
-                            >
-                              ✏️ Edit
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-quick-tbl-action"
-                              disabled={cart.length === 0}
-                              onClick={() => setReplaceModal({ table: tableLabel, orders: dineInByTable[tableLabel] })}
-                              title="Replace table's order with current cart"
-                            >
-                              🔄 Replace
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-quick-tbl-action"
-                              onClick={() => setTransferModal({ fromTable: tableLabel, orders: dineInByTable[tableLabel] })}
-                              title="Transfer order to another table"
-                            >
-                              🔀 Move
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-quick-tbl-action btn-quick-tbl-danger"
-                              onClick={() => setDeleteModal({ table: tableLabel, orders: dineInByTable[tableLabel] })}
-                              title="Delete/void active order"
-                            >
-                              🗑️ Delete
-                            </button>
-                          </div>
+                      {tableLabel && (
+                        <div className="selected-table-banner">
+                          {Boolean(dineInByTable[tableLabel]?.length) ? (
+                            <div className="table-quick-active-bar">
+                              <span className="table-quick-active-title">
+                                🍽️ {tableLabel} Active (₹{(dineInByTable[tableLabel].reduce((s,o)=>s+o.total_amount,0)/100).toFixed(0)})
+                              </span>
+                              <div className="table-quick-active-btns">
+                                <button
+                                  type="button"
+                                  className="btn-quick-tbl-action"
+                                  onClick={() => handleLoadTableItems(tableLabel)}
+                                  title="Load existing items into cart"
+                                >
+                                  ✏️ Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn-quick-tbl-action"
+                                  disabled={cart.length === 0}
+                                  onClick={() => setReplaceModal({ table: tableLabel, orders: dineInByTable[tableLabel] })}
+                                  title="Replace table order with cart"
+                                >
+                                  🔄 Replace
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn-quick-tbl-action"
+                                  onClick={() => setTransferModal({ fromTable: tableLabel, orders: dineInByTable[tableLabel] })}
+                                  title="Transfer order to another table"
+                                >
+                                  🔀 Move
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn-quick-tbl-action btn-quick-tbl-danger"
+                                  onClick={() => setDeleteModal({ table: tableLabel, orders: dineInByTable[tableLabel] })}
+                                  title="Void active order"
+                                >
+                                  🗑️ Delete
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="table-avail-pill">
+                              <span>🟢 <strong>{tableLabel}</strong> is ready</span>
+                            </div>
+                          )}
                         </div>
                       )}
-                    </div>
 
-                    {/* ── 3-Action Button Row ───────────────────── */}
-                    <div className="action-3btn-row">
-                      {/* Takeaway option (in place of KOT) */}
-                      <button
-                        type="button"
-                        disabled={cart.length === 0 || isPending}
-                        onClick={handleKOT}
-                        className={`btn-action-kot ${kotStatus === 'success' ? 'btn-action-success' : ''}`}
-                        title="Takeaway: send to kitchen & add to pending list for checkout later."
-                      >
-                        {kotStatus === 'pending' ? '⏳' : kotStatus === 'success' ? '✅' : '🛍️'}
-                        <span>{kotStatus === 'success' ? 'Sent!' : 'Takeaway'}</span>
-                      </button>
+                      {/* ── 2 Action Buttons: Dine-In & Checkout ── */}
+                      <div className="action-2btn-row">
+                        <button
+                          type="button"
+                          disabled={cart.length === 0 || isPending}
+                          onClick={handleDineIn}
+                          className={`btn-action-kot ${dineInStatus === 'success' ? 'btn-action-success' : ''}`}
+                          title="Send items to kitchen & keep table occupied"
+                        >
+                          {dineInStatus === 'pending' ? '⏳' : dineInStatus === 'success' ? '✅' : '🍽️'}
+                          <span>{dineInStatus === 'success' ? 'Sent!' : `Dine-In (${tableLabel || 'Table'})`}</span>
+                        </button>
 
-                      {/* Dine-In */}
-                      <button
-                        type="button"
-                        disabled={cart.length === 0 || isPending}
-                        onClick={handleDineIn}
-                        className={`btn-action-hold ${dineInStatus === 'success' ? 'btn-action-success' : ''}`}
-                        title="Dine-In: send to kitchen under table, pay at end."
-                      >
-                        {dineInStatus === 'pending' ? '⏳' : dineInStatus === 'success' ? '✅' : '🍽️'}
-                        <span>{dineInStatus === 'success' ? 'Added!' : 'Dine-In'}</span>
-                      </button>
-
-                      {/* Checkout (direct from cart) */}
-                      <button
-                        type="button"
-                        disabled={cart.length === 0 || isPending}
-                        onClick={handleCheckoutFromCart}
-                        className={`btn-action-checkout ${checkoutStatus === 'success' ? 'btn-action-success' : ''} ${finalTotalRupees === 0 && cart.length > 0 ? 'btn-action-checkout-zero' : ''}`}
-                        title="Collect payment and finalise immediately."
-                      >
-                        {checkoutStatus === 'pending' ? '⏳' : checkoutStatus === 'success' ? '✅' : finalTotalRupees === 0 && cart.length > 0 ? '👑' : '✅'}
-                        <span>{checkoutStatus === 'success' ? 'Done!' : finalTotalRupees === 0 && cart.length > 0 ? 'Free' : 'Checkout'}</span>
-                      </button>
+                        <button
+                          type="button"
+                          disabled={((cart.length === 0 && !dineInByTable[tableLabel]?.length) || isPending)}
+                          onClick={handleUnifiedCheckout}
+                          className={`btn-action-checkout ${checkoutStatus === 'success' ? 'btn-action-success' : ''} ${finalTotalRupees === 0 && cart.length > 0 ? 'btn-action-checkout-zero' : ''}`}
+                          title="Settle bill & checkout"
+                        >
+                          {checkoutStatus === 'pending' ? '⏳' : checkoutStatus === 'success' ? '✅' : '💳'}
+                          <span>{checkoutStatus === 'success' ? 'Done!' : (cart.length > 0 ? 'Checkout' : `Checkout ${tableLabel || ''}`)}</span>
+                        </button>
+                      </div>
                     </div>
 
                     <button type="button" onClick={clearCart} className="btn-clear-order">Clear order</button>
 
-                    {/* ── Pending Orders Panel ──────────────────── */}
-                    {hasPending && (
+                    {/* ── Active Tables Panel ── */}
+                    {dineInTableKeys.length > 0 && (
                       <div className="hold-tray-section">
                         <button
                           type="button"
                           className="hold-tray-toggle"
                           onClick={() => setShowPendingPanel(p => !p)}
                         >
-                          <span>📋 Pending Orders</span>
-                          <span className="hold-tray-count">{pendingOrders.length}</span>
+                          <span>🍽️ Active Tables</span>
+                          <span className="hold-tray-count">{dineInTableKeys.length}</span>
                           <span style={{ marginLeft: 'auto', fontSize: '0.75rem' }}>{showPendingPanel ? '▲' : '▼'}</span>
                         </button>
 
                         {showPendingPanel && (
                           <div className="hold-tray-list">
-
-                            {/* Takeaway orders — each can be checked out individually */}
-                            {takeawayPending.length > 0 && (
-                              <>
-                                <div className="pending-section-label">🏃 Takeaway</div>
-                                {takeawayPending.map(order => (
-                                  <div key={order.id} className="held-order-card">
-                                    <div className="held-order-header">
-                                      <span className="held-order-num">#{order.order_no}</span>
-                                      {order.table_label && <span className="held-order-table">📝 {order.table_label}</span>}
-                                      <span className="held-order-time">
-                                        {new Date(order.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                                      </span>
-                                    </div>
-                                    <div className="held-order-items-preview">
-                                      {order.items.slice(0, 3).map((it, i) => (
-                                        <span key={i} className="held-item-chip">{it.name} ×{it.qty}</span>
-                                      ))}
-                                      {order.items.length > 3 && <span className="held-item-chip">+{order.items.length - 3} more</span>}
-                                    </div>
-                                    <div className="held-order-total">₹{(order.total_amount / 100).toFixed(2)}</div>
-                                    <div className="held-order-actions">
-                                      <button
-                                        type="button"
-                                        className="btn-held-checkout"
-                                        onClick={() => setCheckoutTarget({ type: 'single', orders: [order], totalAmount: order.total_amount })}
-                                        disabled={isPending}
-                                      >
-                                        💳 Checkout
-                                      </button>
-                                    </div>
+                            {Object.entries(dineInByTable).map(([tbl, orders]) => {
+                              const tblTotal = orders.reduce((s, o) => s + o.total_amount, 0)
+                              return (
+                                <div key={tbl} className="held-order-card held-order-card-table">
+                                  <div className="held-order-header">
+                                    <span className="held-order-num">🪑 Table {tbl}</span>
+                                    <span className="held-order-table">{orders.length} round{orders.length > 1 ? 's' : ''}</span>
+                                    <span className="held-order-time">
+                                      {new Date(orders[0].created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
                                   </div>
-                                ))}
-                              </>
-                            )}
-
-                            {/* Dine-In tables — all rounds grouped, paid together */}
-                            {Object.keys(dineInByTable).length > 0 && (
-                              <>
-                                <div className="pending-section-label">🍽️ Dine-In Tables</div>
-                                {Object.entries(dineInByTable).map(([table, orders]) => {
-                                  const tableTotal = orders.reduce((s, o) => s + o.total_amount, 0)
-                                  return (
-                                    <div key={table} className="held-order-card held-order-card-table">
-                                      <div className="held-order-header">
-                                        <span className="held-order-num">🪑 {table}</span>
-                                        <span className="held-order-table">{orders.length} round{orders.length > 1 ? 's' : ''}</span>
-                                        <span className="held-order-time">
-                                          {new Date(orders[0].created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                                        </span>
-                                      </div>
-                                      {/* Show each round */}
-                                      {orders.map((o, ri) => (
-                                        <div key={o.id} className="dine-round-row">
-                                          <span className="dine-round-label">Round {ri + 1} #{o.order_no}</span>
-                                          <div className="held-order-items-preview" style={{ flex: 1 }}>
-                                            {o.items.slice(0, 2).map((it, i) => (
-                                              <span key={i} className="held-item-chip">{it.name} ×{it.qty}</span>
-                                            ))}
-                                            {o.items.length > 2 && <span className="held-item-chip">+{o.items.length - 2}</span>}
-                                          </div>
-                                          <span className="dine-round-amt">₹{(o.total_amount / 100).toFixed(0)}</span>
-                                        </div>
-                                      ))}
-                                      <div className="held-order-total" style={{ borderTop: '1px dashed #c7d2fe', paddingTop: '0.3rem', marginTop: '0.2rem' }}>
-                                        Grand Total: ₹{(tableTotal / 100).toFixed(2)}
-                                      </div>
-                                      <div className="held-order-actions" style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.25rem' }}>
-                                          <button
-                                            type="button"
-                                            className="btn-quick-tbl-action"
-                                            onClick={() => handleLoadTableItems(table)}
-                                            title="Load items to cart to edit order"
-                                          >
-                                            ✏️ Edit
-                                          </button>
-                                          <button
-                                            type="button"
-                                            className="btn-quick-tbl-action"
-                                            disabled={cart.length === 0}
-                                            onClick={() => setReplaceModal({ table, orders })}
-                                            title="Replace order with current cart items"
-                                          >
-                                            🔄 Replace
-                                          </button>
-                                          <button
-                                            type="button"
-                                            className="btn-quick-tbl-action"
-                                            onClick={() => setTransferModal({ fromTable: table, orders })}
-                                            title="Transfer to another table"
-                                          >
-                                            🔀 Move
-                                          </button>
-                                          <button
-                                            type="button"
-                                            className="btn-quick-tbl-action btn-quick-tbl-danger"
-                                            onClick={() => setDeleteModal({ table, orders })}
-                                            title="Delete / cancel order"
-                                          >
-                                            🗑️ Delete
-                                          </button>
-                                        </div>
-                                        <button
-                                          type="button"
-                                          className="btn-held-checkout"
-                                          style={{ width: '100%' }}
-                                          onClick={() => setCheckoutTarget({ type: 'table', orders, tableLabel: table, totalAmount: tableTotal })}
-                                          disabled={isPending}
-                                        >
-                                          💳 Checkout {table}
-                                        </button>
-                                      </div>
-                                    </div>
-                                  )
-                                })}
-                              </>
-                            )}
-
+                                  <div className="held-order-items-preview">
+                                    {orders.flatMap(o => o.items).slice(0, 3).map((it, i) => (
+                                      <span key={i} className="held-item-chip">{it.name} ×{it.qty}</span>
+                                    ))}
+                                    {orders.flatMap(o => o.items).length > 3 && (
+                                      <span className="held-item-chip">+{orders.flatMap(o => o.items).length - 3} more</span>
+                                    )}
+                                  </div>
+                                  <div className="held-order-total">Total: ₹{(tblTotal / 100).toFixed(2)}</div>
+                                  <div className="held-order-actions" style={{ display: 'flex', gap: '0.35rem' }}>
+                                    <button
+                                      type="button"
+                                      className="btn-quick-tbl-action"
+                                      style={{ flex: 1 }}
+                                      onClick={() => setTableLabel(tbl)}
+                                    >
+                                      Select
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn-held-checkout"
+                                      style={{ flex: 2 }}
+                                      onClick={() => setCheckoutTarget({ type: 'table', orders, tableLabel: tbl, totalAmount: tblTotal })}
+                                      disabled={isPending}
+                                    >
+                                      💳 Settle &amp; Checkout
+                                    </button>
+                                  </div>
+                                </div>
+                              )
+                            })}
                           </div>
                         )}
                       </div>
@@ -1957,7 +2355,7 @@ export default function POSTerminal({
 
             {/* ─── MOBILE EZO BILLING VIEW (<= 900px) ───────────────────── */}
             <div className="mobile-pos-layout">
-              {mobileOrderView === 'menu' ? (
+              {mobileOrderView === 'menu' && (
                 <div className="mobile-menu-view">
                   {/* Search Bar */}
                   <div className="ezo-search-bar">
@@ -2119,7 +2517,9 @@ export default function POSTerminal({
                     </div>
                   )}
                 </div>
-              ) : (
+              )}
+
+              {mobileOrderView === 'cart' && (
                 /* Mobile Cart & Settle Screen */
                 <div className="mobile-cart-view">
                   {/* Top Return Button */}
@@ -2302,204 +2702,159 @@ export default function POSTerminal({
                         )}
                       </div>
 
-                      {/* Table / Customer Label */}
-                      <div className="table-quick-chips" style={{ marginBottom: '0.35rem' }}>
-                        {allSelectableTables.map(t => {
-                          const isOcc = Boolean(dineInByTable[t] && dineInByTable[t].length > 0)
-                          return (
-                            <button
-                              key={t}
-                              type="button"
-                              className={`table-quick-btn ${tableLabel === t ? 'active' : ''} ${isOcc ? 'table-quick-btn-occupied' : ''}`}
-                              onClick={() => setTableLabel(prev => prev === t ? '' : t)}
-                              title={isOcc ? `${t} (Occupied - ₹${(dineInByTable[t].reduce((s,o)=>s+o.total_amount,0)/100).toFixed(0)})` : `${t} (Available)`}
-                            >
-                              {t}
-                              {isOcc && <span className="table-quick-dot" />}
-                            </button>
-                          )
-                        })}
-                      </div>
-                      <input
-                        type="text"
-                        value={tableLabel}
-                        onChange={e => setTableLabel(e.target.value)}
-                        placeholder="Select or enter table (e.g. T1, T2) or customer name"
-                        className="table-label-input"
-                        style={{ width: '100%', marginBottom: '0.4rem' }}
-                        maxLength={40}
-                      />
-
-                      {/* Quick action bar if selected table has active running order (Mobile) */}
-                      {tableLabel && Boolean(dineInByTable[tableLabel]?.length) && (
-                        <div className="table-quick-active-bar" style={{ marginBottom: '0.4rem' }}>
-                          <span className="table-quick-active-title">
-                            🍽️ {tableLabel} Active (₹{(dineInByTable[tableLabel].reduce((s,o)=>s+o.total_amount,0)/100).toFixed(0)})
-                          </span>
-                          <div className="table-quick-active-btns">
-                            <button
-                              type="button"
-                              className="btn-quick-tbl-action"
-                              onClick={() => handleLoadTableItems(tableLabel)}
-                            >
-                              ✏️ Edit
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-quick-tbl-action"
-                              disabled={cart.length === 0}
-                              onClick={() => setReplaceModal({ table: tableLabel, orders: dineInByTable[tableLabel] })}
-                            >
-                              🔄 Replace
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-quick-tbl-action"
-                              onClick={() => setTransferModal({ fromTable: tableLabel, orders: dineInByTable[tableLabel] })}
-                            >
-                              🔀 Move
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-quick-tbl-action btn-quick-tbl-danger"
-                              onClick={() => setDeleteModal({ table: tableLabel, orders: dineInByTable[tableLabel] })}
-                            >
-                              🗑️ Delete
-                            </button>
-                          </div>
+                      {/* ── Table Quick Picker (Mobile) ── */}
+                      <div className="dinein-cart-panel">
+                        <div className="dinein-picker-label">Select Table:</div>
+                        <div className="table-quick-picker">
+                          {allSelectableTables.map(t => {
+                            const isOcc = Boolean(dineInByTable[t] && dineInByTable[t].length > 0)
+                            return (
+                              <button
+                                key={t}
+                                type="button"
+                                className={`table-quick-btn ${tableLabel === t ? 'active' : ''} ${isOcc ? 'table-quick-btn-occupied' : ''}`}
+                                onClick={() => setTableLabel(t)}
+                                title={isOcc ? `${t} (Occupied - ₹${(dineInByTable[t].reduce((s,o)=>s+o.total_amount,0)/100).toFixed(0)})` : `${t} (Available)`}
+                              >
+                                {t}
+                                {isOcc && <span className="table-quick-dot" />}
+                              </button>
+                            )
+                          })}
                         </div>
-                      )}
 
-                      {/* ── 3-Action Button Row (Mobile) ────────────── */}
-                      <div className="action-3btn-row">
-                        <button
-                          type="button"
-                          disabled={cart.length === 0 || isPending}
-                          onClick={handleKOT}
-                          className={`btn-action-kot ${kotStatus === 'success' ? 'btn-action-success' : ''}`}
-                          title="Takeaway: send to kitchen & pay later"
-                        >
-                          {kotStatus === 'pending' ? '⏳' : kotStatus === 'success' ? '✅' : '🛍️'}
-                          <span>{kotStatus === 'success' ? 'Sent!' : 'Takeaway'}</span>
-                        </button>
+                        {tableLabel && (
+                          <div className="selected-table-banner">
+                            {Boolean(dineInByTable[tableLabel]?.length) ? (
+                              <div className="table-quick-active-bar">
+                                <span className="table-quick-active-title">
+                                  🍽️ {tableLabel} Active (₹{(dineInByTable[tableLabel].reduce((s,o)=>s+o.total_amount,0)/100).toFixed(0)})
+                                </span>
+                                <div className="table-quick-active-btns">
+                                  <button
+                                    type="button"
+                                    className="btn-quick-tbl-action"
+                                    onClick={() => handleLoadTableItems(tableLabel)}
+                                  >
+                                    ✏️ Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-quick-tbl-action"
+                                    disabled={cart.length === 0}
+                                    onClick={() => setReplaceModal({ table: tableLabel, orders: dineInByTable[tableLabel] })}
+                                  >
+                                    🔄 Replace
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-quick-tbl-action"
+                                    onClick={() => setTransferModal({ fromTable: tableLabel, orders: dineInByTable[tableLabel] })}
+                                  >
+                                    🔀 Move
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-quick-tbl-action btn-quick-tbl-danger"
+                                    onClick={() => setDeleteModal({ table: tableLabel, orders: dineInByTable[tableLabel] })}
+                                  >
+                                    🗑️ Delete
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="table-avail-pill">
+                                <span>🟢 <strong>{tableLabel}</strong> is ready</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
 
-                        <button
-                          type="button"
-                          disabled={cart.length === 0 || isPending}
-                          onClick={handleDineIn}
-                          className={`btn-action-hold ${dineInStatus === 'success' ? 'btn-action-success' : ''}`}
-                        >
-                          {dineInStatus === 'pending' ? '⏳' : dineInStatus === 'success' ? '✅' : '🍽️'}
-                          <span>{dineInStatus === 'success' ? 'Added!' : 'Dine-In'}</span>
-                        </button>
+                        {/* ── 2 Action Buttons: Dine-In & Checkout (Mobile) ── */}
+                        <div className="action-2btn-row">
+                          <button
+                            type="button"
+                            disabled={cart.length === 0 || isPending}
+                            onClick={handleDineIn}
+                            className={`btn-action-kot ${dineInStatus === 'success' ? 'btn-action-success' : ''}`}
+                            title="Send to kitchen & keep table occupied"
+                          >
+                            {dineInStatus === 'pending' ? '⏳' : dineInStatus === 'success' ? '✅' : '🍽️'}
+                            <span>{dineInStatus === 'success' ? 'Sent!' : `Dine-In (${tableLabel || 'Table'})`}</span>
+                          </button>
 
-                        <button
-                          type="button"
-                          disabled={cart.length === 0 || isPending}
-                          onClick={handleCheckoutFromCart}
-                          className={`btn-action-checkout ${checkoutStatus === 'success' ? 'btn-action-success' : ''} ${finalTotalRupees === 0 && cart.length > 0 ? 'btn-action-checkout-zero' : ''}`}
-                        >
-                          {checkoutStatus === 'pending' ? '⏳' : checkoutStatus === 'success' ? '✅' : finalTotalRupees === 0 && cart.length > 0 ? '👑' : '✅'}
-                          <span>{checkoutStatus === 'success' ? 'Done!' : finalTotalRupees === 0 && cart.length > 0 ? 'Free' : 'Checkout'}</span>
-                        </button>
+                          <button
+                            type="button"
+                            disabled={((cart.length === 0 && !dineInByTable[tableLabel]?.length) || isPending)}
+                            onClick={handleUnifiedCheckout}
+                            className={`btn-action-checkout ${checkoutStatus === 'success' ? 'btn-action-success' : ''} ${finalTotalRupees === 0 && cart.length > 0 ? 'btn-action-checkout-zero' : ''}`}
+                            title="Settle bill & checkout"
+                          >
+                            {checkoutStatus === 'pending' ? '⏳' : checkoutStatus === 'success' ? '✅' : '💳'}
+                            <span>{checkoutStatus === 'success' ? 'Done!' : (cart.length > 0 ? 'Checkout' : `Checkout ${tableLabel || ''}`)}</span>
+                          </button>
+                        </div>
                       </div>
 
-                      {/* Pending Orders (mobile) */}
-                      {hasPending && (
+                      <button type="button" onClick={clearCart} className="btn-clear-order">Clear order</button>
+
+                      {/* ── Active Tables Panel (Mobile) ── */}
+                      {dineInTableKeys.length > 0 && (
                         <div className="hold-tray-section" style={{ marginTop: '0.5rem' }}>
                           <button
                             type="button"
                             className="hold-tray-toggle"
                             onClick={() => setShowPendingPanel(p => !p)}
                           >
-                            <span>📋 Pending Orders</span>
-                            <span className="hold-tray-count">{pendingOrders.length}</span>
+                            <span>🍽️ Active Tables</span>
+                            <span className="hold-tray-count">{dineInTableKeys.length}</span>
                             <span style={{ marginLeft: 'auto', fontSize: '0.75rem' }}>{showPendingPanel ? '▲' : '▼'}</span>
                           </button>
 
                           {showPendingPanel && (
                             <div className="hold-tray-list">
-                              {/* Takeaway */}
-                              {takeawayPending.length > 0 && (
-                                <>
-                                  <div className="pending-section-label">🏃 Takeaway</div>
-                                  {takeawayPending.map(order => (
-                                    <div key={order.id} className="held-order-card">
-                                      <div className="held-order-header">
-                                        <span className="held-order-num">#{order.order_no}</span>
-                                        {order.table_label && <span className="held-order-table">📝 {order.table_label}</span>}
-                                        <span className="held-order-time">
-                                          {new Date(order.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                                        </span>
-                                      </div>
-                                      <div className="held-order-items-preview">
-                                        {order.items.slice(0, 3).map((it, i) => (
-                                          <span key={i} className="held-item-chip">{it.name} ×{it.qty}</span>
-                                        ))}
-                                        {order.items.length > 3 && <span className="held-item-chip">+{order.items.length - 3}</span>}
-                                      </div>
-                                      <div className="held-order-total">₹{(order.total_amount / 100).toFixed(2)}</div>
-                                      <div className="held-order-actions">
-                                        <button
-                                          type="button"
-                                          className="btn-held-checkout"
-                                          onClick={() => setCheckoutTarget({ type: 'single', orders: [order], totalAmount: order.total_amount })}
-                                          disabled={isPending}
-                                        >
-                                          💳 Checkout
-                                        </button>
-                                      </div>
+                              {Object.entries(dineInByTable).map(([tbl, orders]) => {
+                                const tblTotal = orders.reduce((s, o) => s + o.total_amount, 0)
+                                return (
+                                  <div key={tbl} className="held-order-card held-order-card-table">
+                                    <div className="held-order-header">
+                                      <span className="held-order-num">🪑 Table {tbl}</span>
+                                      <span className="held-order-table">{orders.length} round{orders.length > 1 ? 's' : ''}</span>
+                                      <span className="held-order-time">
+                                        {new Date(orders[0].created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                      </span>
                                     </div>
-                                  ))}
-                                </>
-                              )}
-
-                              {/* Dine-In Tables */}
-                              {Object.keys(dineInByTable).length > 0 && (
-                                <>
-                                  <div className="pending-section-label">🍽️ Dine-In Tables</div>
-                                  {Object.entries(dineInByTable).map(([table, orders]) => {
-                                    const tableTotal = orders.reduce((s, o) => s + o.total_amount, 0)
-                                    return (
-                                      <div key={table} className="held-order-card held-order-card-table">
-                                        <div className="held-order-header">
-                                          <span className="held-order-num">🪑 {table}</span>
-                                          <span className="held-order-table">{orders.length} round{orders.length > 1 ? 's' : ''}</span>
-                                          <span className="held-order-time">
-                                            {new Date(orders[0].created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                                          </span>
-                                        </div>
-                                        {orders.map((o, ri) => (
-                                          <div key={o.id} className="dine-round-row">
-                                            <span className="dine-round-label">R{ri + 1} #{o.order_no}</span>
-                                            <div className="held-order-items-preview" style={{ flex: 1 }}>
-                                              {o.items.slice(0, 2).map((it, i) => (
-                                                <span key={i} className="held-item-chip">{it.name} ×{it.qty}</span>
-                                              ))}
-                                              {o.items.length > 2 && <span className="held-item-chip">+{o.items.length - 2}</span>}
-                                            </div>
-                                            <span className="dine-round-amt">₹{(o.total_amount / 100).toFixed(0)}</span>
-                                          </div>
-                                        ))}
-                                        <div className="held-order-total" style={{ borderTop: '1px dashed #c7d2fe', paddingTop: '0.3rem', marginTop: '0.2rem' }}>
-                                          Grand Total: ₹{(tableTotal / 100).toFixed(2)}
-                                        </div>
-                                        <div className="held-order-actions">
-                                          <button
-                                            type="button"
-                                            className="btn-held-checkout"
-                                            style={{ width: '100%' }}
-                                            onClick={() => setCheckoutTarget({ type: 'table', orders, tableLabel: table, totalAmount: tableTotal })}
-                                            disabled={isPending}
-                                          >
-                                            💳 Checkout {table}
-                                          </button>
-                                        </div>
-                                      </div>
-                                    )
-                                  })}
-                                </>
-                              )}
+                                    <div className="held-order-items-preview">
+                                      {orders.flatMap(o => o.items).slice(0, 3).map((it, i) => (
+                                        <span key={i} className="held-item-chip">{it.name} ×{it.qty}</span>
+                                      ))}
+                                      {orders.flatMap(o => o.items).length > 3 && (
+                                        <span className="held-item-chip">+{orders.flatMap(o => o.items).length - 3}</span>
+                                      )}
+                                    </div>
+                                    <div className="held-order-total">Total: ₹{(tblTotal / 100).toFixed(2)}</div>
+                                    <div className="held-order-actions" style={{ display: 'flex', gap: '0.35rem' }}>
+                                      <button
+                                        type="button"
+                                        className="btn-quick-tbl-action"
+                                        style={{ flex: 1 }}
+                                        onClick={() => setTableLabel(tbl)}
+                                      >
+                                        Select
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="btn-held-checkout"
+                                        style={{ flex: 2 }}
+                                        onClick={() => setCheckoutTarget({ type: 'table', orders, tableLabel: tbl, totalAmount: tblTotal })}
+                                        disabled={isPending}
+                                      >
+                                        💳 Settle &amp; Checkout
+                                      </button>
+                                    </div>
+                                  </div>
+                                )
+                              })}
                             </div>
                           )}
                         </div>
@@ -2508,6 +2863,45 @@ export default function POSTerminal({
                   )}
                 </div>
               )}
+
+              {/* Mobile Tables Floor View */}
+              {mobileOrderView === 'tables' && (
+                <div className="mobile-tables-view">
+                  {renderTablesScreen()}
+                </div>
+              )}
+
+              {/* Persistent Mobile Bottom Navigation Bar (Menu | Cart | Tables) */}
+              <div className="mobile-pos-nav-bar">
+                <button
+                  type="button"
+                  className={`mobile-pos-nav-item ${mobileOrderView === 'menu' ? 'active' : ''}`}
+                  onClick={() => setMobileOrderView('menu')}
+                >
+                  <span className="mob-nav-icon">📋</span>
+                  <span className="mob-nav-label">Menu</span>
+                </button>
+                <button
+                  type="button"
+                  className={`mobile-pos-nav-item ${mobileOrderView === 'cart' ? 'active' : ''}`}
+                  onClick={() => setMobileOrderView('cart')}
+                >
+                  <span className="mob-nav-icon">🛒</span>
+                  <span className="mob-nav-label">Cart</span>
+                  {totalCartQty > 0 && <span className="mob-nav-badge">{totalCartQty}</span>}
+                </button>
+                <button
+                  type="button"
+                  className={`mobile-pos-nav-item ${mobileOrderView === 'tables' ? 'active' : ''}`}
+                  onClick={() => setMobileOrderView('tables')}
+                >
+                  <span className="mob-nav-icon">🍽️</span>
+                  <span className="mob-nav-label">Tables</span>
+                  {Object.keys(dineInByTable).length > 0 && (
+                    <span className="mob-nav-badge mob-nav-badge-pending">{Object.keys(dineInByTable).length}</span>
+                  )}
+                </button>
+              </div>
             </div>
 
             {/* ── Shared Checkout Confirmation Dialog (Desktop & Mobile) ──────────── */}
@@ -2650,7 +3044,14 @@ export default function POSTerminal({
           </div>
         )}
 
-        {/* TAB 2: KOT SCREEN */}
+        {/* TAB 2: DEDICATED LIVE TABLES FLOOR (DESKTOP) */}
+        {activeTab === 'tables' && (
+          <div className="live-orders-desktop-wrapper">
+            {renderTablesScreen()}
+          </div>
+        )}
+
+        {/* TAB 3: KOT SCREEN */}
         {activeTab === 'kot' && (
           <div className="kot-tab-layout">
 

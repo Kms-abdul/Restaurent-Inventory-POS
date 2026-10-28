@@ -60,6 +60,7 @@ export async function createPOSOrder(params: {
   discountAmount?: number
   notes?: string
   items: CartItem[]
+  enableKotPrint?: boolean
 }) {
   // Use fast context (1 DB query max vs 5 in getUserContext)
   const ctx = await getActionContext()
@@ -110,8 +111,8 @@ export async function createPOSOrder(params: {
       .eq('id', result.order_id)
   }
 
-  // Automatically queue KOT in Supabase print_jobs for the 2nd floor printer bridge
-  if (result?.order_id) {
+  // Queue KOT in Supabase print_jobs ONLY IF enableKotPrint is enabled in settings
+  if (result?.order_id && params.enableKotPrint === true) {
     try {
       void createKOTPrintJob({
         branchId: params.branchId,
@@ -147,6 +148,7 @@ export async function createKOTOrder(params: {
   restaurantName?: string
   branchName?: string
   cashierName?: string
+  enableKotPrint?: boolean
 }) {
   const ctx = await getActionContext()
   if (!ctx) throw new Error('Unauthorized')
@@ -154,9 +156,9 @@ export async function createKOTOrder(params: {
   const clientRef = `${params.branchId}-kot-${Date.now()}-${Math.random().toString(36).slice(2)}`
   const totalAmount = params.items.reduce((sum, i) => sum + i.lineTotal, 0)
 
-  // Build combined notes
+  // Build combined notes cleanly: avoid repeating table label if already present
   let combinedNotes = params.notes?.trim() ?? ''
-  if (params.tableLabel) {
+  if (params.tableLabel && !combinedNotes.includes(params.tableLabel)) {
     combinedNotes = combinedNotes
       ? `${combinedNotes} [${params.tableLabel}]`
       : `[${params.tableLabel}]`
@@ -188,8 +190,8 @@ export async function createKOTOrder(params: {
 
   const result = data as { order_id: string; order_no: number; idempotent: boolean }
 
-  // Queue KOT print job
-  if (result?.order_id) {
+  // Queue KOT print job only if enabled in printer settings
+  if (result?.order_id && params.enableKotPrint === true) {
     try {
       void createKOTPrintJob({
         branchId: params.branchId,
@@ -224,14 +226,13 @@ export async function holdOrder(params: {
   restaurantName?: string
   branchName?: string
   cashierName?: string
+  enableKotPrint?: boolean
 }) {
-  // HOLD behaves identically to KOT on the server side — the distinction is
-  // that the UI keeps the order in a "Hold Tray" and doesn't clear the active session.
+  // Orders for Dine-in tables or held tickets are kept active (status='active')
+  // via createKOTOrder.
   return createKOTOrder({
     ...params,
-    notes: params.notes
-      ? `[HOLD] ${params.notes}`
-      : '[HOLD]',
+    notes: params.notes,
   })
 }
 
@@ -247,6 +248,7 @@ export async function addItemsToHeldOrder(params: {
   cashierName?: string
   tableLabel?: string
   orderNo: number
+  enableKotPrint?: boolean
 }) {
   const ctx = await getActionContext()
   if (!ctx) throw new Error('Unauthorized')
@@ -285,21 +287,23 @@ export async function addItemsToHeldOrder(params: {
 
   if (updateError) throw new Error(updateError.message)
 
-  // Queue incremental KOT print for only the new items
-  try {
-    void createKOTPrintJob({
-      branchId: params.branchId,
-      orderId: params.orderId,
-      orderNo: params.orderNo,
-      restaurantName: params.restaurantName ?? 'RESTAURANT',
-      branchName: params.branchName ?? '',
-      cashierName: params.cashierName ?? 'Staff',
-      tableNumber: params.tableLabel,
-      notes: `[ADD-ON] Order #${params.orderNo}`,
-      items: params.newItems.map(i => ({ name: i.name, qty: i.qty, notes: i.notes })),
-    })
-  } catch (e) {
-    console.warn('Add-on KOT print job failed:', e)
+  // Queue incremental KOT print for only the new items if enabled
+  if (params.enableKotPrint === true) {
+    try {
+      void createKOTPrintJob({
+        branchId: params.branchId,
+        orderId: params.orderId,
+        orderNo: params.orderNo,
+        restaurantName: params.restaurantName ?? 'RESTAURANT',
+        branchName: params.branchName ?? '',
+        cashierName: params.cashierName ?? 'Staff',
+        tableNumber: params.tableLabel,
+        notes: `[ADD-ON] Order #${params.orderNo}`,
+        items: params.newItems.map(i => ({ name: i.name, qty: i.qty, notes: i.notes })),
+      })
+    } catch (e) {
+      console.warn('Add-on KOT print job failed:', e)
+    }
   }
 
   revalidatePath('/staff/pos')
@@ -567,6 +571,7 @@ export async function replaceTableOrder(params: {
   branchName?: string
   cashierName?: string
   notes?: string
+  enableKotPrint?: boolean
 }) {
   const ctx = await getActionContext()
   if (!ctx) throw new Error('Unauthorized')
@@ -589,5 +594,6 @@ export async function replaceTableOrder(params: {
     restaurantName: params.restaurantName,
     branchName: params.branchName,
     cashierName: params.cashierName,
+    enableKotPrint: params.enableKotPrint,
   })
 }
