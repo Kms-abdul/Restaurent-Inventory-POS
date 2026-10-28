@@ -78,7 +78,11 @@ export function buildHtml(type: 'KOT' | 'RECEIPT', data: ThermalOrderData, opts:
     .dh { transform: scaleY(2); transform-origin: top; margin-bottom: 1.05em; }
     .quad { font-size: 2em; line-height: 1.05; }
     .item { font-size: 1.5em; line-height: 1.1; }
-  </style></head><body>${body}</body></html>`
+    .feed { height: 18mm; }
+  </style></head><body>${body}
+    <!-- Feed paper past the tear bar; the dot stops "Paper Saving" drivers trimming the blank space -->
+    <div class="feed"></div><div class="c">.</div>
+  </body></html>`
 }
 
 /**

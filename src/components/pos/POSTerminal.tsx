@@ -1211,6 +1211,12 @@ export default function POSTerminal({
               items: allItems.map(i => ({ name: i.name, quantity: i.qty, price: i.unitPrice / 100, lineTotal: i.lineTotal / 100 })),
             }
             triggerPrints(printData, 'RECEIPT')
+            if (printerSettings.enableKotPrint && cart.length > 0) {
+              triggerPrints({
+                ...printData,
+                items: cart.map(i => ({ name: i.name, quantity: i.qty, price: i.unitPrice / 100, lineTotal: i.lineTotal / 100 })),
+              }, 'KOT')
+            }
 
             setPendingOrders(prev => prev.filter(o => !(o.type === 'dine-in' && o.table_label === label)))
             setCart([])
