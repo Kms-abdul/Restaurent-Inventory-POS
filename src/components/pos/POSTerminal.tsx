@@ -385,6 +385,9 @@ export default function POSTerminal({
     totalAmount: number  // paise
   } | null>(null)
 
+  // Hydration safety flag
+  const [mounted, setMounted] = useState(false)
+
   // Printer Configuration Settings (Saved in LocalStorage)
   const [printerSettings, setPrinterSettings] = useState({
     printerName: 'POSIO QX300',
@@ -392,6 +395,7 @@ export default function POSTerminal({
     enableKotPrint: true,
     enableReceiptPrint: true,
     enableLocalBrowserPrint: false,
+    enableLocalBridge: true,
     ticketType: 'receipt' as 'receipt' | 'kot',
     showPrices: true,
     headerText: restaurantName || 'CHINESE NAWAB',
@@ -400,6 +404,7 @@ export default function POSTerminal({
   })
 
   useEffect(() => {
+    setMounted(true)
     try {
       const saved = localStorage.getItem('pos_printer_settings')
       if (saved) {
@@ -412,6 +417,7 @@ export default function POSTerminal({
           enableKotPrint: parsed.enableKotPrint !== false,
           enableReceiptPrint: parsed.enableReceiptPrint !== false,
           enableLocalBrowserPrint: parsed.enableLocalBrowserPrint === true,
+          enableLocalBridge: parsed.enableLocalBridge !== false,
         }))
       }
     } catch { }
@@ -857,6 +863,7 @@ export default function POSTerminal({
         data: printData,
         printerName: printerSettings.printerName || 'POSIO QX300',
         paperWidth: printerSettings.paperWidth || 48,
+        branchId,
       }).catch(err => {
         console.warn('Background KOT print notice:', err)
       })
@@ -869,6 +876,7 @@ export default function POSTerminal({
           data: printData,
           printerName: printerSettings.printerName || 'POSIO QX300',
           paperWidth: printerSettings.paperWidth || 48,
+          branchId,
         }).catch(err => {
           console.warn('Background Receipt print notice:', err)
         })
@@ -1663,6 +1671,7 @@ export default function POSTerminal({
   }
 
   const tryDirectLocalBridgePrint = async (type: 'KOT' | 'RECEIPT' | 'BOTH', data: ThermalOrderData) => {
+    if (!printerSettings.enableLocalBridge) return
     try {
       // If local print bridge is running on cashier counter PC (http://127.0.0.1:8080/print),
       // send directly to local USB thermal printer with 0ms latency!
@@ -1697,6 +1706,7 @@ export default function POSTerminal({
         data,
         printerName: printerSettings.printerName || 'POSIO QX300',
         paperWidth: printerSettings.paperWidth || 48,
+        branchId,
       })
       if (res.success) {
         setKotPrintStatus('printed')
@@ -1726,6 +1736,7 @@ export default function POSTerminal({
         data,
         printerName: printerSettings.printerName || 'POSIO QX300',
         paperWidth: printerSettings.paperWidth || 48,
+        branchId,
       })
       if (res.success) {
         setBillPrintStatus('printed')
@@ -1749,6 +1760,7 @@ export default function POSTerminal({
         type: 'TEST',
         printerName: printerSettings.printerName || 'POSIO QX300',
         paperWidth: printerSettings.paperWidth || 48,
+        branchId,
       })
       if (res.success) {
         setTestPrintStatus('printed')
@@ -3585,6 +3597,15 @@ export default function POSTerminal({
                       />
                       <span>Enable Customer Bill Receipt Print</span>
                     </label>
+
+                    <label className="checkbox-item">
+                      <input
+                        type="checkbox"
+                        checked={printerSettings.enableLocalBridge}
+                        onChange={e => updatePrinterSettings({ enableLocalBridge: e.target.checked })}
+                      />
+                      <span>Direct Local Bridge (http://127.0.0.1:8080)</span>
+                    </label>
                   </div>
                 </div>
 
@@ -3646,12 +3667,12 @@ export default function POSTerminal({
                     <span className="card-header-icon">🖨️</span>
                     <h2>Test Print Preview</h2>
                   </div>
-                  <pre className="test-preview-box">{`        ** PRINT TEST **
+                  <pre className="test-preview-box" suppressHydrationWarning>{`        ** PRINT TEST **
        Chinese Nawab POS
 
 Printer: ${printerSettings.printerName || 'POSIO QX300'}
 Width: ${printerSettings.paperWidth} chars
-Time: ${new Date().toLocaleTimeString('en-IN')}
+Time: ${mounted ? new Date().toLocaleTimeString('en-IN') : '12:00:00 PM'}
 
 ------------------------------------------------
            Printer working correctly!`}</pre>
@@ -3667,10 +3688,10 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
         <div className="print-ticket-wrapper">
           <div className="print-title">** KITCHEN ORDER TICKET **</div>
           <div className="print-divider">===============================</div>
-          <div className="print-order-no">ORDER #{activePrintTicket?.order_no ?? nextOrderNo}</div>
+          <div className="print-order-no" suppressHydrationWarning>ORDER #{activePrintTicket?.order_no ?? nextOrderNo}</div>
           <div className="print-divider">===============================</div>
-          <div className="print-meta-line">Time: {activePrintTicket?.time ?? new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase()}</div>
-          <div className="print-meta-line">By: {activePrintTicket?.cashier ?? cashierName}</div>
+          <div className="print-meta-line" suppressHydrationWarning>Time: {activePrintTicket?.time ?? (mounted ? new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase() : '')}</div>
+          <div className="print-meta-line" suppressHydrationWarning>By: {activePrintTicket?.cashier ?? cashierName}</div>
           {activePrintTicket?.notes && (
             <div className="print-meta-line">Note: {activePrintTicket.notes}</div>
           )}

@@ -21,6 +21,7 @@ export interface PrintJobParams {
   paperWidth?: number
   enableKotPrint?: boolean
   enableReceiptPrint?: boolean
+  branchId?: string
 }
 
 export async function printJobAction(params: PrintJobParams) {
@@ -31,6 +32,7 @@ export async function printJobAction(params: PrintJobParams) {
     paperWidth = 48,
     enableKotPrint = true,
     enableReceiptPrint = true,
+    branchId,
   } = params
 
   if (type === 'RECEIPT' && enableReceiptPrint === false) {
@@ -46,28 +48,41 @@ export async function printJobAction(params: PrintJobParams) {
   if (process.platform !== 'win32') {
     try {
       const ctx = await getActionContext()
-      if (ctx && data) {
-        const supabase = ctx.isSuperAdmin ? await createServiceClient() : await createClient()
+      const effectiveBranchId = branchId || ctx?.branchId
+      if (effectiveBranchId) {
+        const supabase = (ctx && ctx.isSuperAdmin) ? await createServiceClient() : await createClient()
+        const payload = data ? {
+          restaurant_name: data.restaurantName,
+          branch_name: data.branchName,
+          order_no: data.orderNumber,
+          cashier_name: data.cashierName,
+          created_at: data.createdAt,
+          subtotal: data.subtotal,
+          discount_amount: data.discount ? Math.round(data.discount * 100) : 0,
+          total_amount: data.total ? Math.round(data.total * 100) : 0,
+          payment_mode: data.paymentMode,
+          split_details: data.splitDetails,
+          items: data.items.map(i => ({
+            name: i.name,
+            qty: i.quantity,
+            line_total: i.lineTotal ? Math.round(i.lineTotal * 100) : (i.price ? Math.round(i.price * i.quantity * 100) : 0),
+          })),
+        } : {
+          restaurant_name: 'TEST PRINT',
+          order_no: 'TEST',
+          cashier_name: 'Cashier',
+          created_at: new Date().toISOString(),
+          subtotal: 0,
+          discount_amount: 0,
+          total_amount: 0,
+          payment_mode: 'TEST',
+          items: [{ name: 'Test Print Success', qty: 1, line_total: 0 }],
+        }
+
         await supabase.from('print_jobs').insert({
-          branch_id: ctx.branchId,
+          branch_id: effectiveBranchId,
           printer_type: type === 'RECEIPT' ? 'receipt' : 'kitchen',
-          payload: {
-            restaurant_name: data.restaurantName,
-            branch_name: data.branchName,
-            order_no: data.orderNumber,
-            cashier_name: data.cashierName,
-            created_at: data.createdAt,
-            subtotal: data.subtotal,
-            discount_amount: data.discount ? Math.round(data.discount * 100) : 0,
-            total_amount: data.total ? Math.round(data.total * 100) : 0,
-            payment_mode: data.paymentMode,
-            split_details: data.splitDetails,
-            items: data.items.map(i => ({
-              name: i.name,
-              qty: i.quantity,
-              line_total: i.lineTotal ? Math.round(i.lineTotal * 100) : (i.price ? Math.round(i.price * i.quantity * 100) : 0),
-            })),
-          },
+          payload,
           status: 'pending',
           copies: 1,
         })
