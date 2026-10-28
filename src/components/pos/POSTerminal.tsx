@@ -1590,7 +1590,9 @@ export default function POSTerminal({
         orderNumber: override.order_no,
         createdAt: new Date().toISOString(),
         restaurantName: printerSettings.headerText || restaurantName || 'CHINESE NAWAB',
-        branchName: printerSettings.tagline || branchName,
+        branchName: override.table_label
+          ? `${printerSettings.tagline || branchName} | ${override.table_label}`
+          : printerSettings.tagline || branchName,
         cashierName: override.cashier || cashierName,
         subtotal: subtotalRupees,
         discount: discountRupees,
@@ -1610,7 +1612,9 @@ export default function POSTerminal({
         orderNumber: nextOrderNo,
         createdAt: new Date().toISOString(),
         restaurantName: printerSettings.headerText || restaurantName || 'CHINESE NAWAB',
-        branchName: printerSettings.tagline || branchName,
+        branchName: tableLabel.trim()
+          ? `${printerSettings.tagline || branchName} | ${tableLabel.trim()}`
+          : printerSettings.tagline || branchName,
         cashierName,
         subtotal: subtotalRupees,
         discount: discountRupees,
@@ -3291,53 +3295,55 @@ export default function POSTerminal({
               </div>
             )}
 
-            {checkoutTarget && (
-              <div className="checkout-overlay">
-                <div className="checkout-dialog">
-                  <div className="checkout-dialog-title">
-                    {checkoutTarget.type === 'table'
-                      ? `💳 Checkout — ${checkoutTarget.tableLabel}`
-                      : `💳 Checkout — Order #${checkoutTarget.orders[0]?.order_no}`}
-                  </div>
-                  {checkoutTarget.type === 'table' && (
-                    <div className="checkout-dialog-table">
-                      {checkoutTarget.orders.length} round{checkoutTarget.orders.length > 1 ? 's' : ''} combined
-                    </div>
-                  )}
-                  <div className="checkout-dialog-total">
-                    Total: <strong>₹{(checkoutTarget.totalAmount / 100).toFixed(2)}</strong>
-                  </div>
-                  <div className="checkout-dialog-items">
-                    {checkoutTarget.orders.flatMap((o, ri) =>
-                      o.items.map((it, i) => (
-                        <div key={`${ri}-${i}`}>
-                          {checkoutTarget.type === 'table' && <span style={{ color: '#6366f1', fontSize: '0.75rem', marginRight: '0.3rem' }}>R{ri+1}</span>}
-                          {it.name} ×{it.qty} — ₹{(it.lineTotal / 100).toFixed(2)}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                  <div className="payment-buttons-grid" style={{ margin: '0.75rem 0' }}>
-                    <button type="button" onClick={() => setPaymentMode('cash')} className={`payment-btn ${paymentMode === 'cash' ? 'active' : ''}`}>💵 Cash</button>
-                    <button type="button" onClick={() => setPaymentMode('card')} className={`payment-btn ${paymentMode === 'card' ? 'active' : ''}`}>💳 Card</button>
-                    <button type="button" onClick={() => setPaymentMode('upi')} className={`payment-btn ${paymentMode === 'upi' ? 'active' : ''}`}>📱 UPI</button>
-                    <button type="button" onClick={() => handleSelectSplit(checkoutTarget.totalAmount / 100)} className={`payment-btn ${paymentMode === 'split' ? 'active-split' : ''}`}>🔀 Split</button>
-                  </div>
-                  {renderSplitPaymentBox(checkoutTarget.totalAmount / 100)}
-                  <div className="checkout-dialog-btns">
-                    <button type="button" className="btn-dialog-cancel" onClick={() => setCheckoutTarget(null)}>Cancel</button>
-                    <button
-                      type="button"
-                      className="btn-dialog-confirm"
-                      disabled={checkoutStatus === 'pending'}
-                      onClick={handleCheckoutPending}
-                    >
-                      {checkoutStatus === 'pending' ? '⏳ Processing...' : '✅ Confirm & Print Receipt'}
-                    </button>
-                  </div>
-                </div>
+          </div>
+        )}
+
+        {/* Checkout dialog: rendered outside the tabs so Live Tables can open it too */}
+        {checkoutTarget && (
+          <div className="checkout-overlay">
+            <div className="checkout-dialog">
+              <div className="checkout-dialog-title">
+                {checkoutTarget.type === 'table'
+                  ? `💳 Checkout — ${checkoutTarget.tableLabel}`
+                  : `💳 Checkout — Order #${checkoutTarget.orders[0]?.order_no}`}
               </div>
-            )}
+              {checkoutTarget.type === 'table' && (
+                <div className="checkout-dialog-table">
+                  {checkoutTarget.orders.length} round{checkoutTarget.orders.length > 1 ? 's' : ''} combined
+                </div>
+              )}
+              <div className="checkout-dialog-total">
+                Total: <strong>₹{(checkoutTarget.totalAmount / 100).toFixed(2)}</strong>
+              </div>
+              <div className="checkout-dialog-items">
+                {checkoutTarget.orders.flatMap((o, ri) =>
+                  o.items.map((it, i) => (
+                    <div key={`${ri}-${i}`}>
+                      {checkoutTarget.type === 'table' && <span style={{ color: '#6366f1', fontSize: '0.75rem', marginRight: '0.3rem' }}>R{ri+1}</span>}
+                      {it.name} ×{it.qty} — ₹{(it.lineTotal / 100).toFixed(2)}
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="payment-buttons-grid" style={{ margin: '0.75rem 0' }}>
+                <button type="button" onClick={() => setPaymentMode('cash')} className={`payment-btn ${paymentMode === 'cash' ? 'active' : ''}`}>💵 Cash</button>
+                <button type="button" onClick={() => setPaymentMode('card')} className={`payment-btn ${paymentMode === 'card' ? 'active' : ''}`}>💳 Card</button>
+                <button type="button" onClick={() => setPaymentMode('upi')} className={`payment-btn ${paymentMode === 'upi' ? 'active' : ''}`}>📱 UPI</button>
+                <button type="button" onClick={() => handleSelectSplit(checkoutTarget.totalAmount / 100)} className={`payment-btn ${paymentMode === 'split' ? 'active-split' : ''}`}>🔀 Split</button>
+              </div>
+              {renderSplitPaymentBox(checkoutTarget.totalAmount / 100)}
+              <div className="checkout-dialog-btns">
+                <button type="button" className="btn-dialog-cancel" onClick={() => setCheckoutTarget(null)}>Cancel</button>
+                <button
+                  type="button"
+                  className="btn-dialog-confirm"
+                  disabled={checkoutStatus === 'pending'}
+                  onClick={handleCheckoutPending}
+                >
+                  {checkoutStatus === 'pending' ? '⏳ Processing...' : '✅ Confirm & Print Receipt'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

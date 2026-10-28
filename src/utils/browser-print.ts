@@ -11,55 +11,74 @@ const esc = (s: unknown) =>
 
 const money = (n?: number) => (n ?? 0).toFixed(2)
 
-function buildHtml(type: 'KOT' | 'RECEIPT', data: ThermalOrderData, opts: BrowserPrintOptions) {
-  const widthMm = (opts.paperWidth ?? 48) <= 32 ? 58 : 80
-  const time = new Date(data.createdAt ?? Date.now()).toLocaleString('en-IN', {
-    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  })
+// Mirrors the ESC/POS layout used by the desktop POS (pos-app print.routes.js):
+// fixed-width firmware font, `width` chars per line, double-height item rows.
+export function buildHtml(type: 'KOT' | 'RECEIPT', data: ThermalOrderData, opts: BrowserPrintOptions) {
+  const width = opts.paperWidth ?? 48
+  const widthMm = width <= 32 ? 58 : 80
+  const printableMm = width <= 32 ? 48 : 72
+  const line = (ch = '-') => `<div>${ch.repeat(width)}</div>`
+  const leftRight = (l: string, r: string, cls = '') =>
+    `<div class="lr ${cls}"><span>${esc(l)}</span><span>${esc(r)}</span></div>`
 
-  const header = `
-    <div class="c b big">${esc(data.restaurantName || 'RESTAURANT')}</div>
-    ${data.branchName ? `<div class="c">${esc(data.branchName)}</div>` : ''}
-    <hr>`
+  // Callers append the table to branchName as "<branch> | T1 — Round 2"
+  const table = data.branchName?.split(' | ').slice(1).join(' | ').trim()
 
   let body: string
   if (type === 'KOT') {
     body = `
-      <div class="c b">KITCHEN ORDER TICKET</div>
-      <div class="c b xl">ORDER #${esc(data.orderNumber)}</div>
-      <hr>
-      <div>${esc(time)}${data.cashierName ? ` &middot; ${esc(data.cashierName)}` : ''}</div>
-      <hr>
-      ${data.items.map(i => `<div class="row b"><span>${esc(i.name)}</span><span>x ${esc(i.quantity)}</span></div>`).join('')}
-      <hr>`
+      <div class="c">
+        <br>
+        <div class="b">KITCHEN ORDER TICKET</div>
+        ${line('-')}
+        <div class="b quad">ORDER #${esc(data.orderNumber)}</div>
+        ${table ? `<div class="b quad">${esc(/^t\d/i.test(table) ? `TABLE ${table}` : table)}</div>` : ''}
+        ${line('=')}
+        <div class="b">ITEMS:</div>
+        ${data.items.map(i => `<div class="b item">&bull; ${esc(i.name)} x ${esc(i.quantity)}</div>`).join('')}
+        ${line('=')}
+      </div>`
   } else {
-    const showPrices = opts.showPrices !== false
+    const name = (data.restaurantName || 'CHINESE NAWAB').toUpperCase()
+    const created = new Date(data.createdAt ?? Date.now())
+    const dateStr = created.toLocaleDateString('en-IN')
+    const timeStr = created.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+    const itemColChars = Math.floor(width * 0.62)
+    const row = (item: string, qty: string, total: string, cls = '') =>
+      `<div class="tbl ${cls}"><span>${esc(item)}</span><span class="c">${esc(qty)}</span><span class="r">${esc(total)}</span></div>`
+
     body = `
-      <div class="row"><span>Bill #${esc(data.orderNumber)}</span><span>${esc(time)}</span></div>
-      ${data.cashierName ? `<div>Cashier: ${esc(data.cashierName)}</div>` : ''}
-      <hr>
+      <div class="c"><br><div class="b">${esc(name)}</div></div>
+      ${line()}
+      ${leftRight(`Order: #${data.orderNumber}`, `${dateStr} ${timeStr}`)}
+      ${table ? `<div class="b">Table: ${esc(table)}</div>` : ''}
+      ${line()}
+      ${row('Item', 'Qty', 'Total')}
       ${data.items.map(i => {
-        const line = i.lineTotal ?? (i.price ?? 0) * i.quantity
-        return `<div class="row"><span>${esc(i.name)} x ${esc(i.quantity)}</span>${showPrices ? `<span>${money(line)}</span>` : ''}</div>`
+        const lineTotal = i.lineTotal != null ? i.lineTotal : (i.price != null ? i.price * i.quantity : 0)
+        return row(String(i.name || '').substring(0, itemColChars - 1), String(i.quantity), money(lineTotal), 'dh')
       }).join('')}
-      <hr>
-      ${data.subtotal != null ? `<div class="row"><span>Subtotal</span><span>${money(data.subtotal)}</span></div>` : ''}
-      ${data.discount ? `<div class="row"><span>Discount</span><span>-${money(data.discount)}</span></div>` : ''}
-      <div class="row b big"><span>TOTAL</span><span>&#8377;${money(data.total)}</span></div>
-      ${data.paymentMode ? `<div>Paid by: ${esc(data.paymentMode)}</div>` : ''}
-      <hr>
-      <div class="c">${esc(opts.footerText || '** THANK YOU VISIT AGAIN **')}</div>`
+      ${line()}
+      ${leftRight('TOTAL', money(data.total), 'dh b')}
+      ${data.paymentMode && data.paymentMode !== 'Pending' ? `<div>Payment: ${esc(data.paymentMode)}</div>` : ''}
+      <br>
+      <div class="c">Thank You! Visit Again. ${esc(data.restaurantName || 'Chinese Nawab')}</div>`
   }
 
   return `<!doctype html><html><head><meta charset="utf-8"><style>
     @page { size: ${widthMm}mm auto; margin: 0; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { width: ${widthMm}mm; padding: 2mm 3mm 6mm; font: 12px/1.35 'Courier New', monospace; color: #000; }
-    .c { text-align: center; } .b { font-weight: bold; }
-    .big { font-size: 15px; } .xl { font-size: 20px; margin: 2px 0; }
-    .row { display: flex; justify-content: space-between; gap: 6px; }
-    hr { border: 0; border-top: 1px dashed #000; margin: 4px 0; }
-  </style></head><body>${header}${body}</body></html>`
+    body { width: ${widthMm}mm; padding: 0 ${(widthMm - printableMm) / 2}mm 8mm; color: #000;
+      font-family: 'Courier New', Courier, monospace; font-size: ${(printableMm / width / 0.6).toFixed(3)}mm; line-height: 1.05;
+      overflow: hidden; }
+    .c { text-align: center; } .r { text-align: right; } .b { font-weight: bold; }
+    .lr { display: flex; justify-content: space-between; }
+    .tbl { display: grid; grid-template-columns: 62% 13% 25%; }
+    .tbl span { overflow: hidden; }
+    .dh { transform: scaleY(2); transform-origin: top; margin-bottom: 1.05em; }
+    .quad { font-size: 2em; line-height: 1.05; }
+    .item { font-size: 1.5em; line-height: 1.1; }
+  </style></head><body>${body}</body></html>`
 }
 
 /**
