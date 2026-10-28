@@ -84,7 +84,7 @@ interface Props {
   isAdmin: boolean
 }
 
-type PaymentMode = 'cash' | 'card' | 'upi'
+type PaymentMode = 'cash' | 'card' | 'upi' | 'split'
 type ActiveTab = 'order' | 'tables' | 'kot' | 'kds' | 'printer'
 
 const POS_TABS: { id: ActiveTab; label: string; icon: string }[] = [
@@ -147,6 +147,163 @@ export default function POSTerminal({
   const [mobileOrderView, setMobileOrderView] = useState<'menu' | 'cart' | 'tables'>('menu')
   const [liveOrdersFilter, setLiveOrdersFilter] = useState<'all' | 'dine-in' | 'takeaway'>('all')
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('cash')
+  const [splitCash, setSplitCash] = useState<string>('')
+  const [splitUpi, setSplitUpi] = useState<string>('')
+  const [splitCard, setSplitCard] = useState<string>('')
+
+  // ─── Split Payment Calculation Helpers ─────────────────────────────────────
+  const applySplitPreset = (cashRatio: number, upiRatio: number, totalRupees: number) => {
+    const cashAmt = Math.round(totalRupees * cashRatio)
+    const upiAmt = Math.max(0, Math.round(totalRupees - cashAmt))
+    setSplitCash(cashAmt > 0 ? String(cashAmt) : '')
+    setSplitUpi(upiAmt > 0 ? String(upiAmt) : '')
+    setSplitCard('')
+  }
+
+  const handleSelectSplit = (totalRupees: number) => {
+    setPaymentMode('split')
+    if (!splitCash && !splitUpi && !splitCard && totalRupees > 0) {
+      // Default to 20% Cash / 80% UPI as preferred by user
+      applySplitPreset(0.2, 0.8, totalRupees)
+    }
+  }
+
+  const getSplitDetailsPaise = (totalRupees: number) => {
+    const c = Math.round((parseFloat(splitCash) || 0) * 100)
+    const u = Math.round((parseFloat(splitUpi) || 0) * 100)
+    const card = Math.round((parseFloat(splitCard) || 0) * 100)
+    const allocatedPaise = c + u + card
+    const totalPaise = Math.round(totalRupees * 100)
+    const remainingRupees = Math.max(0, (totalPaise - allocatedPaise) / 100)
+    const overRupees = Math.max(0, (allocatedPaise - totalPaise) / 100)
+    const isBalanced = Math.abs(allocatedPaise - totalPaise) <= 1
+    return {
+      cash: c,
+      upi: u,
+      card: card,
+      splitPaise: { cash: c, upi: u, card: card },
+      splitRupees: {
+        cash: (parseFloat(splitCash) || 0),
+        upi: (parseFloat(splitUpi) || 0),
+        card: (parseFloat(splitCard) || 0),
+      },
+      allocatedPaise,
+      allocatedRupees: allocatedPaise / 100,
+      remainingRupees,
+      overRupees,
+      isBalanced,
+    }
+  }
+
+  const renderSplitPaymentBox = (targetTotalRupees: number) => {
+    if (paymentMode !== 'split') return null
+    const { allocatedRupees, remainingRupees, overRupees, isBalanced } = getSplitDetailsPaise(targetTotalRupees)
+
+    return (
+      <div className="split-payment-box">
+        <div className="split-header">
+          <span className="split-title">🔀 Split Payment Breakdown</span>
+          <span className="split-target-total">Due: ₹{targetTotalRupees.toFixed(2)}</span>
+        </div>
+
+        {/* Quick Presets */}
+        <div className="split-presets-row">
+          <button
+            type="button"
+            className="split-preset-chip"
+            onClick={() => applySplitPreset(0.2, 0.8, targetTotalRupees)}
+            title="20% Cash, 80% UPI"
+          >
+            ⚡ 20% Cash / 80% UPI
+          </button>
+          <button
+            type="button"
+            className="split-preset-chip"
+            onClick={() => applySplitPreset(0.5, 0.5, targetTotalRupees)}
+            title="50% Cash, 50% UPI"
+          >
+            ⚡ 50% / 50%
+          </button>
+          <button
+            type="button"
+            className="split-preset-chip"
+            onClick={() => {
+              setSplitCash('')
+              setSplitUpi('')
+              setSplitCard('')
+            }}
+            title="Clear split"
+          >
+            Clear
+          </button>
+        </div>
+
+        {/* 3 Inputs */}
+        <div className="split-inputs-grid">
+          <div className="split-input-field">
+            <label>💵 Cash (₹)</label>
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={splitCash}
+              placeholder="0"
+              onChange={e => setSplitCash(e.target.value)}
+            />
+          </div>
+          <div className="split-input-field">
+            <label>📱 UPI (₹)</label>
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={splitUpi}
+              placeholder="0"
+              onChange={e => setSplitUpi(e.target.value)}
+            />
+          </div>
+          <div className="split-input-field">
+            <label>💳 Card (₹)</label>
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={splitCard}
+              placeholder="0"
+              onChange={e => setSplitCard(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {/* Balance status */}
+        <div className="split-balance-bar">
+          {isBalanced ? (
+            <div className="split-status-balanced">
+              ✅ Balanced: ₹{allocatedRupees.toFixed(2)} / ₹{targetTotalRupees.toFixed(2)}
+            </div>
+          ) : overRupees > 0 ? (
+            <div className="split-status-over">
+              ⚠️ Overpaid by ₹{overRupees.toFixed(2)} (Allocated: ₹{allocatedRupees.toFixed(2)})
+            </div>
+          ) : (
+            <div className="split-status-under">
+              <span>Remaining: <strong>₹{remainingRupees.toFixed(2)}</strong></span>
+              <button
+                type="button"
+                className="btn-split-auto-fill"
+                onClick={() => {
+                  const curUpi = parseFloat(splitUpi) || 0
+                  setSplitUpi(String(Math.round(curUpi + remainingRupees)))
+                }}
+              >
+                + Add to UPI
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
   const [isPending, startTransition] = useTransition()
   const [nextOrderNo, setNextOrderNo] = useState(1)
   const [lastOrder, setLastOrder] = useState<{
@@ -908,10 +1065,37 @@ export default function POSTerminal({
 
             const allOrderIds = [...tableOrders.map(o => o.id), holdRes.order_id]
             const totalPaise = tableOrders.reduce((sum, o) => sum + o.total_amount, 0) + subtotalPaise
+            const netPaise = Math.max(0, totalPaise - discountPaise)
+            const netRupees = netPaise / 100
+
+            if (netRupees > 0 && paymentMode === 'split') {
+              const split = getSplitDetailsPaise(netRupees)
+              if (!split.isBalanced) {
+                alert(
+                  `Please balance the split payment before checkout.\nTotal Due: ₹${netRupees.toFixed(2)}\nAllocated: ₹${split.allocatedRupees.toFixed(2)}\n${split.overRupees > 0 ? `Overpaid by ₹${split.overRupees.toFixed(2)}` : `Remaining: ₹${split.remainingRupees.toFixed(2)}`}`
+                )
+                setCheckoutStatus('idle')
+                return
+              }
+            }
+
+            const splitPaise = (netRupees > 0 && paymentMode === 'split') ? {
+              cash: Math.round((parseFloat(splitCash) || 0) * 100),
+              upi: Math.round((parseFloat(splitUpi) || 0) * 100),
+              card: Math.round((parseFloat(splitCard) || 0) * 100),
+            } : undefined
+
+            const splitRupees = (netRupees > 0 && paymentMode === 'split') ? {
+              cash: (parseFloat(splitCash) || 0),
+              upi: (parseFloat(splitUpi) || 0),
+              card: (parseFloat(splitCard) || 0),
+            } : undefined
+
             await checkoutMultipleOrders({
               orderIds: allOrderIds,
-              paymentMode,
-              totalAmount: totalPaise,
+              paymentMode: netRupees === 0 ? 'cash' : paymentMode,
+              totalAmount: netPaise,
+              splitDetails: splitPaise,
             })
 
             const allItemsMerged = [...tableOrders.flatMap(o => o.items), ...cart]
@@ -923,8 +1107,9 @@ export default function POSTerminal({
               cashierName,
               subtotal: totalPaise / 100,
               discount: discountRupees,
-              total: (totalPaise - discountPaise) / 100,
-              paymentMode: finalTotalRupees === 0 ? 'Complimentary' : paymentMode,
+              total: netRupees,
+              paymentMode: netRupees === 0 ? 'Complimentary' : paymentMode,
+              splitDetails: splitRupees,
               items: allItemsMerged.map(i => ({
                 name: i.name,
                 quantity: i.qty,
@@ -943,6 +1128,9 @@ export default function POSTerminal({
             setCart([])
             clearDiscount()
             setTableLabel('')
+            setSplitCash('')
+            setSplitUpi('')
+            setSplitCard('')
             setCheckoutStatus('success')
             setMobileOrderView('menu')
             setTimeout(() => setCheckoutStatus('idle'), 3000)
@@ -1124,6 +1312,17 @@ export default function POSTerminal({
   // Directly creates + settles an order in one step (Takeaway direct or instant checkout).
   const handleCheckoutFromCart = () => {
     if (cart.length === 0) return
+
+    if (finalTotalRupees > 0 && paymentMode === 'split') {
+      const split = getSplitDetailsPaise(finalTotalRupees)
+      if (!split.isBalanced) {
+        alert(
+          `Please balance the split payment before checkout.\nTotal Due: ₹${finalTotalRupees.toFixed(2)}\nAllocated: ₹${split.allocatedRupees.toFixed(2)}\n${split.overRupees > 0 ? `Overpaid by ₹${split.overRupees.toFixed(2)}` : `Remaining: ₹${split.remainingRupees.toFixed(2)}`}`
+        )
+        return
+      }
+    }
+
     setCheckoutStatus('pending')
     startTransition(async () => {
       try {
@@ -1141,16 +1340,38 @@ export default function POSTerminal({
           combinedNotes = `[${effectiveTable}]${combinedNotes ? ` ${combinedNotes}` : ''}`
         }
 
+        const splitPaise = (finalTotalRupees > 0 && paymentMode === 'split') ? {
+          cash: Math.round((parseFloat(splitCash) || 0) * 100),
+          upi: Math.round((parseFloat(splitUpi) || 0) * 100),
+          card: Math.round((parseFloat(splitCard) || 0) * 100),
+        } : undefined
+
+        const splitRupees = (finalTotalRupees > 0 && paymentMode === 'split') ? {
+          cash: (parseFloat(splitCash) || 0),
+          upi: (parseFloat(splitUpi) || 0),
+          card: (parseFloat(splitCard) || 0),
+        } : undefined
+
+        if (paymentMode === 'split' && splitRupees) {
+          const parts: string[] = []
+          if (splitRupees.cash > 0) parts.push(`Cash ₹${splitRupees.cash.toFixed(2)}`)
+          if (splitRupees.upi > 0) parts.push(`UPI ₹${splitRupees.upi.toFixed(2)}`)
+          if (splitRupees.card > 0) parts.push(`Card ₹${splitRupees.card.toFixed(2)}`)
+          const splitTag = `[Split: ${parts.join(', ')}]`
+          combinedNotes = combinedNotes ? `${combinedNotes} ${splitTag}` : splitTag
+        }
+
         const result = await createPOSOrder({
           branchId,
           restaurantId,
           tableNumber: effectiveTable,
-          paymentMode,
+          paymentMode: finalTotalRupees === 0 ? 'cash' : paymentMode,
           totalAmount: finalTotalPaise,
           discountAmount: discountPaise,
           notes: combinedNotes || undefined,
           items: cart,
           enableKotPrint: printerSettings.enableKotPrint,
+          splitDetails: splitPaise,
         })
 
         const createdOrder = {
@@ -1172,6 +1393,9 @@ export default function POSTerminal({
         clearDiscount()
         setOrderNotes('')
         setTableLabel('')
+        setSplitCash('')
+        setSplitUpi('')
+        setSplitCard('')
 
         const printData: ThermalOrderData = {
           orderNumber: result.order_no,
@@ -1185,6 +1409,7 @@ export default function POSTerminal({
           discount: discountRupees,
           total: finalTotalRupees,
           paymentMode: finalTotalRupees === 0 ? 'Complimentary' : paymentMode,
+          splitDetails: splitRupees,
           items: createdOrder.items.map(i => ({
             name: i.name,
             quantity: i.qty,
@@ -1210,12 +1435,36 @@ export default function POSTerminal({
   // ─── CHECKOUT pending orders (single takeaway OR full dine-in table) ───────
   const handleCheckoutPending = () => {
     if (!checkoutTarget) return
+
+    const { orders, totalAmount } = checkoutTarget
+    const targetRupees = totalAmount / 100
+    const isZero = totalAmount === 0
+    const mode = isZero ? 'cash' : paymentMode
+
+    if (!isZero && mode === 'split') {
+      const split = getSplitDetailsPaise(targetRupees)
+      if (!split.isBalanced) {
+        alert(
+          `Please balance the split payment before checkout.\nTotal Due: ₹${targetRupees.toFixed(2)}\nAllocated: ₹${split.allocatedRupees.toFixed(2)}\n${split.overRupees > 0 ? `Overpaid by ₹${split.overRupees.toFixed(2)}` : `Remaining: ₹${split.remainingRupees.toFixed(2)}`}`
+        )
+        return
+      }
+    }
+
     setCheckoutStatus('pending')
     startTransition(async () => {
       try {
-        const { orders, totalAmount } = checkoutTarget
-        const isZero = totalAmount === 0
-        const mode = isZero ? 'cash' : paymentMode
+        const splitPaise = (!isZero && mode === 'split') ? {
+          cash: Math.round((parseFloat(splitCash) || 0) * 100),
+          upi: Math.round((parseFloat(splitUpi) || 0) * 100),
+          card: Math.round((parseFloat(splitCard) || 0) * 100),
+        } : undefined
+
+        const splitRupees = (!isZero && mode === 'split') ? {
+          cash: (parseFloat(splitCash) || 0),
+          upi: (parseFloat(splitUpi) || 0),
+          card: (parseFloat(splitCard) || 0),
+        } : undefined
 
         if (checkoutTarget.type === 'single') {
           // Single takeaway order
@@ -1223,6 +1472,7 @@ export default function POSTerminal({
             orderId: orders[0].id,
             paymentMode: mode,
             totalAmount,
+            splitDetails: splitPaise,
           })
           setPendingOrders(prev => prev.filter(o => o.id !== orders[0].id))
         } else {
@@ -1231,6 +1481,7 @@ export default function POSTerminal({
             orderIds: orders.map(o => o.id),
             paymentMode: mode,
             totalAmount,
+            splitDetails: splitPaise,
           })
           // Remove all orders that belonged to this table
           setPendingOrders(prev =>
@@ -1252,6 +1503,7 @@ export default function POSTerminal({
           discount: 0,
           total: totalAmount / 100,
           paymentMode: isZero ? 'Complimentary' : paymentMode,
+          splitDetails: splitRupees,
           items: allItems.map(i => ({ name: i.name, quantity: i.qty, price: i.unitPrice / 100, lineTotal: i.lineTotal / 100 })),
         }
         triggerPrints(printData, 'RECEIPT')
@@ -1260,6 +1512,9 @@ export default function POSTerminal({
           setTableLabel('')
           setCart([])
         }
+        setSplitCash('')
+        setSplitUpi('')
+        setSplitCard('')
         setCheckoutTarget(null)
         setCheckoutStatus('success')
         setTimeout(() => setCheckoutStatus('idle'), 3000)
@@ -2155,7 +2410,7 @@ export default function POSTerminal({
                             type="button"
                             onClick={() => setPaymentMode('cash')}
                             className="payment-btn active-zero"
-                            style={{ gridColumn: 'span 3', background: '#ecfdf5', borderColor: '#10b981', color: '#047857', fontWeight: 800 }}
+                            style={{ gridColumn: 'span 4', background: '#ecfdf5', borderColor: '#10b981', color: '#047857', fontWeight: 800 }}
                           >
                             🎁 Complimentary / Free (₹0.00)
                           </button>
@@ -2182,9 +2437,17 @@ export default function POSTerminal({
                             >
                               📱 UPI
                             </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSelectSplit(finalTotalRupees)}
+                              className={`payment-btn ${paymentMode === 'split' ? 'active-split' : ''}`}
+                            >
+                              🔀 Split
+                            </button>
                           </>
                         )}
                       </div>
+                      {renderSplitPaymentBox(finalTotalRupees)}
                     </div>
 
                     {/* ── Table Quick Picker ── */}
@@ -2672,7 +2935,7 @@ export default function POSTerminal({
                       {/* Payment Mode */}
                       <div className="payment-buttons-grid" style={{ margin: '0.4rem 0' }}>
                         {finalTotalRupees === 0 ? (
-                          <div style={{ gridColumn: 'span 3', textAlign: 'center', background: '#ecfdf5', color: '#047857', padding: '0.4rem', borderRadius: '0.4rem', fontWeight: 700, fontSize: '0.85rem' }}>
+                          <div style={{ gridColumn: 'span 4', textAlign: 'center', background: '#ecfdf5', color: '#047857', padding: '0.4rem', borderRadius: '0.4rem', fontWeight: 700, fontSize: '0.85rem' }}>
                             🎁 Complimentary (₹0.00)
                           </div>
                         ) : (
@@ -2698,9 +2961,17 @@ export default function POSTerminal({
                             >
                               💳 Card
                             </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSelectSplit(finalTotalRupees)}
+                              className={`payment-btn ${paymentMode === 'split' ? 'active-split' : ''}`}
+                            >
+                              🔀 Split
+                            </button>
                           </>
                         )}
                       </div>
+                      {renderSplitPaymentBox(finalTotalRupees)}
 
                       {/* ── Table Quick Picker (Mobile) ── */}
                       <div className="dinein-cart-panel">
@@ -3026,7 +3297,9 @@ export default function POSTerminal({
                     <button type="button" onClick={() => setPaymentMode('cash')} className={`payment-btn ${paymentMode === 'cash' ? 'active' : ''}`}>💵 Cash</button>
                     <button type="button" onClick={() => setPaymentMode('card')} className={`payment-btn ${paymentMode === 'card' ? 'active' : ''}`}>💳 Card</button>
                     <button type="button" onClick={() => setPaymentMode('upi')} className={`payment-btn ${paymentMode === 'upi' ? 'active' : ''}`}>📱 UPI</button>
+                    <button type="button" onClick={() => handleSelectSplit(checkoutTarget.totalAmount / 100)} className={`payment-btn ${paymentMode === 'split' ? 'active-split' : ''}`}>🔀 Split</button>
                   </div>
+                  {renderSplitPaymentBox(checkoutTarget.totalAmount / 100)}
                   <div className="checkout-dialog-btns">
                     <button type="button" className="btn-dialog-cancel" onClick={() => setCheckoutTarget(null)}>Cancel</button>
                     <button
@@ -4309,19 +4582,25 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
         }
         .payment-buttons-grid {
           display: grid;
-          grid-template-columns: 1fr 1fr 1fr;
-          gap: 0.4rem;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 0.35rem;
         }
         .payment-btn {
-          padding: 0.5rem;
+          padding: 0.45rem 0.2rem;
           background: #f8fafc;
           border: 1px solid #cbd5e1;
           border-radius: 0.4rem;
           color: #334155;
-          font-size: 0.8rem;
+          font-size: 0.76rem;
           font-weight: 600;
           cursor: pointer;
           transition: all 0.15s;
+          text-align: center;
+          white-space: nowrap;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.2rem;
         }
         .payment-btn:hover {
           background: #f1f5f9;
@@ -4333,6 +4612,138 @@ Time: ${new Date().toLocaleTimeString('en-IN')}
           border-color: #d97706;
           font-weight: 700;
           box-shadow: 0 2px 4px rgba(245, 158, 11, 0.25);
+        }
+        .payment-btn.active-split {
+          background: #6366f1;
+          color: #ffffff;
+          border-color: #4f46e5;
+          font-weight: 700;
+          box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3);
+        }
+
+        /* ── Split Payment Box Styling ── */
+        .split-payment-box {
+          background: #eef2ff;
+          border: 1.5px solid #c7d2fe;
+          border-radius: 0.5rem;
+          padding: 0.65rem;
+          margin-top: 0.45rem;
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+          box-shadow: 0 2px 5px rgba(99, 102, 241, 0.08);
+        }
+        .split-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          font-size: 0.76rem;
+          font-weight: 700;
+          color: #3730a3;
+        }
+        .split-target-total {
+          background: #e0e7ff;
+          color: #312e81;
+          padding: 0.15rem 0.45rem;
+          border-radius: 0.25rem;
+          font-size: 0.78rem;
+          font-weight: 800;
+        }
+        .split-presets-row {
+          display: flex;
+          gap: 0.35rem;
+          flex-wrap: wrap;
+        }
+        .split-preset-chip {
+          background: #ffffff;
+          border: 1px solid #c7d2fe;
+          border-radius: 0.3rem;
+          padding: 0.25rem 0.5rem;
+          font-size: 0.72rem;
+          font-weight: 700;
+          color: #4338ca;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .split-preset-chip:hover {
+          background: #6366f1;
+          color: #ffffff;
+          border-color: #4f46e5;
+        }
+        .split-inputs-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 0.4rem;
+        }
+        .split-input-field {
+          display: flex;
+          flex-direction: column;
+          gap: 0.15rem;
+        }
+        .split-input-field label {
+          font-size: 0.68rem;
+          font-weight: 700;
+          color: #4b5563;
+        }
+        .split-input-field input {
+          width: 100%;
+          padding: 0.35rem 0.45rem;
+          font-size: 0.85rem;
+          font-weight: 700;
+          color: #1e293b;
+          border: 1px solid #c7d2fe;
+          border-radius: 0.3rem;
+          background: #ffffff;
+          outline: none;
+          box-sizing: border-box;
+        }
+        .split-input-field input:focus {
+          border-color: #6366f1;
+          box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+        }
+        .split-balance-bar {
+          font-size: 0.72rem;
+        }
+        .split-status-balanced {
+          background: #d1fae5;
+          color: #065f46;
+          font-weight: 700;
+          border-radius: 0.3rem;
+          padding: 0.3rem 0.5rem;
+          display: flex;
+          align-items: center;
+        }
+        .split-status-over {
+          background: #fee2e2;
+          color: #991b1b;
+          font-weight: 700;
+          border-radius: 0.3rem;
+          padding: 0.3rem 0.5rem;
+        }
+        .split-status-under {
+          background: #fef3c7;
+          color: #92400e;
+          font-weight: 600;
+          border-radius: 0.3rem;
+          padding: 0.3rem 0.5rem;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.5rem;
+        }
+        .btn-split-auto-fill {
+          background: #d97706;
+          color: #ffffff;
+          border: none;
+          border-radius: 0.25rem;
+          padding: 0.2rem 0.45rem;
+          font-size: 0.68rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: background 0.15s;
+        }
+        .btn-split-auto-fill:hover {
+          background: #b45309;
         }
 
         .action-buttons-column {

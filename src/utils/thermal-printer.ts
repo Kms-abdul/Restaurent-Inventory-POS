@@ -21,10 +21,11 @@ export interface ThermalOrderData {
   branchName?: string
   cashierName?: string
   items: ThermalItem[]
-  subtotal?: number
+  subtotal?: number 
   discount?: number
   total: number
   paymentMode?: string
+  splitDetails?: { cash?: number; upi?: number; card?: number }
 }
 
 export function getThermalPrinter(width: number = 48): ThermalPrinter {
@@ -110,7 +111,14 @@ export function buildReceipt(printer: ThermalPrinter, data: ThermalOrderData) {
   printer.setTextNormal()
 
   if (data.paymentMode && data.paymentMode !== 'Pending') {
-    printer.println(`Payment: ${data.paymentMode.toUpperCase()}`)
+    if (data.paymentMode.toLowerCase() === 'split' && data.splitDetails) {
+      printer.leftRight('Payment', 'SPLIT')
+      if (data.splitDetails.cash) printer.leftRight('  Cash:', `Rs.${money(data.splitDetails.cash)}`)
+      if (data.splitDetails.upi)  printer.leftRight('  UPI:',  `Rs.${money(data.splitDetails.upi)}`)
+      if (data.splitDetails.card) printer.leftRight('  Card:', `Rs.${money(data.splitDetails.card)}`)
+    } else {
+      printer.println(`Payment: ${data.paymentMode.toUpperCase()}`)
+    }
   }
   printer.newLine()
   printer.alignCenter()

@@ -61,6 +61,7 @@ export async function createPOSOrder(params: {
   notes?: string
   items: CartItem[]
   enableKotPrint?: boolean
+  splitDetails?: { cash?: number; upi?: number; card?: number }
 }) {
   // Use fast context (1 DB query max vs 5 in getUserContext)
   const ctx = await getActionContext()
@@ -109,6 +110,28 @@ export async function createPOSOrder(params: {
         payment_mode: params.paymentMode || 'cash',
       })
       .eq('id', result.order_id)
+  }
+
+  // Record split payment breakdown if payment_mode is 'split'
+  if (!isZeroTotal && params.totalAmount > 0 && params.paymentMode === 'split' && params.splitDetails && result?.order_id) {
+    try {
+      await supabase.from('payments').delete().eq('order_id', result.order_id)
+      const splitRows: Array<{ order_id: string; amount: number; payment_mode: PaymentMode }> = []
+      if ((params.splitDetails.cash ?? 0) > 0) {
+        splitRows.push({ order_id: result.order_id, amount: Math.round(params.splitDetails.cash!), payment_mode: 'cash' })
+      }
+      if ((params.splitDetails.upi ?? 0) > 0) {
+        splitRows.push({ order_id: result.order_id, amount: Math.round(params.splitDetails.upi!), payment_mode: 'upi' })
+      }
+      if ((params.splitDetails.card ?? 0) > 0) {
+        splitRows.push({ order_id: result.order_id, amount: Math.round(params.splitDetails.card!), payment_mode: 'card' })
+      }
+      if (splitRows.length > 0) {
+        await supabase.from('payments').insert(splitRows)
+      }
+    } catch (payErr) {
+      console.warn('Failed to insert split payment breakdown:', payErr)
+    }
   }
 
   // Queue KOT in Supabase print_jobs ONLY IF enableKotPrint is enabled in settings
@@ -319,6 +342,7 @@ export async function checkoutHeldOrder(params: {
   paymentMode: PaymentMode
   discountAmount?: number
   totalAmount: number
+  splitDetails?: { cash?: number; upi?: number; card?: number }
 }) {
   const ctx = await getActionContext()
   if (!ctx) throw new Error('Unauthorized')
@@ -349,11 +373,27 @@ export async function checkoutHeldOrder(params: {
 
   // Record payment (skip for zero-total / complimentary)
   if (!isZeroTotal && params.totalAmount > 0) {
-    await supabase.from('payments').insert({
-      order_id: params.orderId,
-      amount: params.totalAmount,
-      payment_mode: effectivePaymentMode,
-    })
+    if (params.paymentMode === 'split' && params.splitDetails) {
+      const splitRows: Array<{ order_id: string; amount: number; payment_mode: PaymentMode }> = []
+      if ((params.splitDetails.cash ?? 0) > 0) {
+        splitRows.push({ order_id: params.orderId, amount: Math.round(params.splitDetails.cash!), payment_mode: 'cash' })
+      }
+      if ((params.splitDetails.upi ?? 0) > 0) {
+        splitRows.push({ order_id: params.orderId, amount: Math.round(params.splitDetails.upi!), payment_mode: 'upi' })
+      }
+      if ((params.splitDetails.card ?? 0) > 0) {
+        splitRows.push({ order_id: params.orderId, amount: Math.round(params.splitDetails.card!), payment_mode: 'card' })
+      }
+      if (splitRows.length > 0) {
+        await supabase.from('payments').insert(splitRows)
+      }
+    } else {
+      await supabase.from('payments').insert({
+        order_id: params.orderId,
+        amount: params.totalAmount,
+        payment_mode: effectivePaymentMode,
+      })
+    }
   }
 
   revalidatePath('/staff/pos')
@@ -370,6 +410,7 @@ export async function checkoutMultipleOrders(params: {
   paymentMode: PaymentMode
   discountAmount?: number
   totalAmount: number
+  splitDetails?: { cash?: number; upi?: number; card?: number }
 }) {
   const ctx = await getActionContext()
   if (!ctx) throw new Error('Unauthorized')
@@ -396,25 +437,43 @@ export async function checkoutMultipleOrders(params: {
 
   // 2. Fetch the orders to record individual payment records in payments table
   if (!isZeroTotal && params.totalAmount > 0) {
-    const { data: ordersToPay, error: fetchError } = await supabase
-      .from('orders')
-      .select('id, total_amount')
-      .in('id', params.orderIds)
+    if (params.paymentMode === 'split' && params.splitDetails) {
+      const primaryOrderId = params.orderIds[0]
+      const splitRows: Array<{ order_id: string; amount: number; payment_mode: PaymentMode }> = []
+      if ((params.splitDetails.cash ?? 0) > 0) {
+        splitRows.push({ order_id: primaryOrderId, amount: Math.round(params.splitDetails.cash!), payment_mode: 'cash' })
+      }
+      if ((params.splitDetails.upi ?? 0) > 0) {
+        splitRows.push({ order_id: primaryOrderId, amount: Math.round(params.splitDetails.upi!), payment_mode: 'upi' })
+      }
+      if ((params.splitDetails.card ?? 0) > 0) {
+        splitRows.push({ order_id: primaryOrderId, amount: Math.round(params.splitDetails.card!), payment_mode: 'card' })
+      }
+      if (splitRows.length > 0) {
+        const { error: payError } = await supabase.from('payments').insert(splitRows)
+        if (payError) console.warn('Payment insert warning for split checkout:', payError)
+      }
+    } else {
+      const { data: ordersToPay, error: fetchError } = await supabase
+        .from('orders')
+        .select('id, total_amount')
+        .in('id', params.orderIds)
 
-    if (fetchError) throw new Error(fetchError.message)
+      if (fetchError) throw new Error(fetchError.message)
 
-    if (ordersToPay && ordersToPay.length > 0) {
-      const paymentRows = ordersToPay
-        .filter(o => (o.total_amount ?? 0) > 0)
-        .map(o => ({
-          order_id: o.id,
-          amount: o.total_amount,
-          payment_mode: effectivePaymentMode,
-        }))
+      if (ordersToPay && ordersToPay.length > 0) {
+        const paymentRows = ordersToPay
+          .filter(o => (o.total_amount ?? 0) > 0)
+          .map(o => ({
+            order_id: o.id,
+            amount: o.total_amount,
+            payment_mode: effectivePaymentMode,
+          }))
 
-      if (paymentRows.length > 0) {
-        const { error: payError } = await supabase.from('payments').insert(paymentRows)
-        if (payError) console.warn('Payment insert warning for multiple checkout:', payError)
+        if (paymentRows.length > 0) {
+          const { error: payError } = await supabase.from('payments').insert(paymentRows)
+          if (payError) console.warn('Payment insert warning for multiple checkout:', payError)
+        }
       }
     }
   }

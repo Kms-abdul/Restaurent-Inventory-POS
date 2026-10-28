@@ -4641,3 +4641,316 @@ button:disabled:active {
   box-shadow: none !important;
 }
 
+
+
+/* ── Split Payment Mode Global Styles ── */
+.payment-buttons-grid {
+  display: grid !important;
+  grid-template-columns: repeat(4, 1fr) !important;
+  gap: 0.35rem !important;
+}
+
+.payment-btn.active-split {
+  background: #6366f1 !important;
+  color: #ffffff !important;
+  border-color: #4f46e5 !important;
+  font-weight: 700 !important;
+  box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3) !important;
+}
+
+.split-payment-box {
+  background: #eef2ff !important;
+  border: 1.5px solid #c7d2fe !important;
+  border-radius: 0.5rem !important;
+  padding: 0.65rem !important;
+  margin-top: 0.45rem !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0.5rem !important;
+  box-shadow: 0 2px 5px rgba(99, 102, 241, 0.08) !important;
+}
+
+.split-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  font-size: 0.76rem !important;
+  font-weight: 700 !important;
+  color: #3730a3 !important;
+}
+
+.split-target-total {
+  background: #e0e7ff !important;
+  color: #312e81 !important;
+  padding: 0.15rem 0.45rem !important;
+  border-radius: 0.25rem !important;
+  font-size: 0.78rem !important;
+  font-weight: 800 !important;
+}
+
+.split-presets-row {
+  display: flex !important;
+  gap: 0.35rem !important;
+  flex-wrap: wrap !important;
+}
+
+.split-preset-chip {
+  background: #ffffff !important;
+  border: 1px solid #c7d2fe !important;
+  border-radius: 0.3rem !important;
+  padding: 0.25rem 0.5rem !important;
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+  color: #4338ca !important;
+  cursor: pointer !important;
+  transition: all 0.15s !important;
+}
+
+.split-preset-chip:hover {
+  background: #6366f1 !important;
+  color: #ffffff !important;
+  border-color: #4f46e5 !important;
+}
+
+.split-inputs-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 0.4rem !important;
+}
+
+.split-input-field {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0.15rem !important;
+}
+
+.split-input-field label {
+  font-size: 0.68rem !important;
+  font-weight: 700 !important;
+  color: #4b5563 !important;
+}
+
+.split-input-field input {
+  width: 100% !important;
+  padding: 0.35rem 0.45rem !important;
+  font-size: 0.85rem !important;
+  font-weight: 700 !important;
+  color: #1e293b !important;
+  border: 1px solid #c7d2fe !important;
+  border-radius: 0.3rem !important;
+  background: #ffffff !important;
+  outline: none !important;
+  box-sizing: border-box !important;
+}
+
+.split-input-field input:focus {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2) !important;
+}
+
+.split-balance-bar {
+  font-size: 0.72rem !important;
+}
+
+.split-status-balanced {
+  background: #d1fae5 !important;
+  color: #065f46 !important;
+  font-weight: 700 !important;
+  border-radius: 0.3rem !important;
+  padding: 0.3rem 0.5rem !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.split-status-over {
+  background: #fee2e2 !important;
+  color: #991b1b !important;
+  font-weight: 700 !important;
+  border-radius: 0.3rem !important;
+  padding: 0.3rem 0.5rem !important;
+}
+
+.split-status-under {
+  background: #fef3c7 !important;
+  color: #92400e !important;
+  font-weight: 600 !important;
+  border-radius: 0.3rem !important;
+  padding: 0.3rem 0.5rem !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 0.5rem !important;
+}
+
+.btn-split-auto-fill {
+  background: #d97706 !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: 0.25rem !important;
+  padding: 0.2rem 0.45rem !important;
+  font-size: 0.68rem !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+  transition: background 0.15s !important;
+}
+
+.btn-split-auto-fill:hover {
+  background: #b45309 !important;
+}
+
+
+/* ── Split Payment Mode Global Styles ── */
+.payment-buttons-grid {
+  display: grid !important;
+  grid-template-columns: repeat(4, 1fr) !important;
+  gap: 0.35rem !important;
+}
+
+.payment-btn.active-split {
+  background: #6366f1 !important;
+  color: #ffffff !important;
+  border-color: #4f46e5 !important;
+  font-weight: 700 !important;
+  box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3) !important;
+}
+
+.split-payment-box {
+  background: #eef2ff !important;
+  border: 1.5px solid #c7d2fe !important;
+  border-radius: 0.5rem !important;
+  padding: 0.65rem !important;
+  margin-top: 0.45rem !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0.5rem !important;
+  box-shadow: 0 2px 5px rgba(99, 102, 241, 0.08) !important;
+}
+
+.split-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  font-size: 0.76rem !important;
+  font-weight: 700 !important;
+  color: #3730a3 !important;
+}
+
+.split-target-total {
+  background: #e0e7ff !important;
+  color: #312e81 !important;
+  padding: 0.15rem 0.45rem !important;
+  border-radius: 0.25rem !important;
+  font-size: 0.78rem !important;
+  font-weight: 800 !important;
+}
+
+.split-presets-row {
+  display: flex !important;
+  gap: 0.35rem !important;
+  flex-wrap: wrap !important;
+}
+
+.split-preset-chip {
+  background: #ffffff !important;
+  border: 1px solid #c7d2fe !important;
+  border-radius: 0.3rem !important;
+  padding: 0.25rem 0.5rem !important;
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+  color: #4338ca !important;
+  cursor: pointer !important;
+  transition: all 0.15s !important;
+}
+
+.split-preset-chip:hover {
+  background: #6366f1 !important;
+  color: #ffffff !important;
+  border-color: #4f46e5 !important;
+}
+
+.split-inputs-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 0.4rem !important;
+}
+
+.split-input-field {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0.15rem !important;
+}
+
+.split-input-field label {
+  font-size: 0.68rem !important;
+  font-weight: 700 !important;
+  color: #4b5563 !important;
+}
+
+.split-input-field input {
+  width: 100% !important;
+  padding: 0.35rem 0.45rem !important;
+  font-size: 0.85rem !important;
+  font-weight: 700 !important;
+  color: #1e293b !important;
+  border: 1px solid #c7d2fe !important;
+  border-radius: 0.3rem !important;
+  background: #ffffff !important;
+  outline: none !important;
+  box-sizing: border-box !important;
+}
+
+.split-input-field input:focus {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2) !important;
+}
+
+.split-balance-bar {
+  font-size: 0.72rem !important;
+}
+
+.split-status-balanced {
+  background: #d1fae5 !important;
+  color: #065f46 !important;
+  font-weight: 700 !important;
+  border-radius: 0.3rem !important;
+  padding: 0.3rem 0.5rem !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.split-status-over {
+  background: #fee2e2 !important;
+  color: #991b1b !important;
+  font-weight: 700 !important;
+  border-radius: 0.3rem !important;
+  padding: 0.3rem 0.5rem !important;
+}
+
+.split-status-under {
+  background: #fef3c7 !important;
+  color: #92400e !important;
+  font-weight: 600 !important;
+  border-radius: 0.3rem !important;
+  padding: 0.3rem 0.5rem !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 0.5rem !important;
+}
+
+.btn-split-auto-fill {
+  background: #d97706 !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: 0.25rem !important;
+  padding: 0.2rem 0.45rem !important;
+  font-size: 0.68rem !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+  transition: background 0.15s !important;
+}
+
+.btn-split-auto-fill:hover {
+  background: #b45309 !important;
+}
+
