@@ -11,6 +11,10 @@ echo  Starting Print Agent...
 echo  (Keep this window open during business hours)
 echo ====================================================
 cd /d "%~dp0print-agent"
-npm run dev
-pause
+:loop
+call npm run build && call npm start
+echo.
+echo  Print agent stopped. Restarting in 5 seconds... (close this window to stop)
+timeout /t 5 /nobreak >nul
+goto loop
 

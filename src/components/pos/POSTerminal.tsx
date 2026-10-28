@@ -7,6 +7,7 @@ import type { CartItem } from '@/types/database'
 import { createPOSOrder, createKOTOrder, holdOrder, addItemsToHeldOrder, checkoutHeldOrder, checkoutMultipleOrders, listOrders, updateFulfillmentStatus, voidOrder, replaceTableOrder, transferTableOrder, voidTableOrders } from '@/app/actions/orders'
 import { printJobAction, getDiscoveredPrintersAction, printDirectToThermalPrinter } from '@/app/actions/print-direct'
 import type { ThermalOrderData } from '@/utils/thermal-printer'
+import { printViaBrowser } from '@/utils/browser-print'
 import { formatTicketText, type PrintTicketPayload } from '@/utils/receipt-formatter'
 
 interface Category {
@@ -394,7 +395,7 @@ export default function POSTerminal({
     paperWidth: 48,
     enableKotPrint: true,
     enableReceiptPrint: true,
-    enableLocalBrowserPrint: false,
+    browserPrintFallback: true,
     enableLocalBridge: true,
     ticketType: 'receipt' as 'receipt' | 'kot',
     showPrices: true,
@@ -416,7 +417,7 @@ export default function POSTerminal({
           paperWidth: Number(parsed.paperWidth) || 48,
           enableKotPrint: parsed.enableKotPrint !== false,
           enableReceiptPrint: parsed.enableReceiptPrint !== false,
-          enableLocalBrowserPrint: parsed.enableLocalBrowserPrint === true,
+          browserPrintFallback: parsed.browserPrintFallback !== false,
           enableLocalBridge: parsed.enableLocalBridge !== false,
         }))
       }
@@ -853,35 +854,12 @@ export default function POSTerminal({
 
   // ─── Shared print helper ──────────────────────────────────────────────────
   const triggerPrints = (printData: ThermalOrderData, type: 'KOT' | 'RECEIPT' | 'BOTH') => {
-    // 1. Try local bridge (localhost:8080) for instant direct print
-    tryDirectLocalBridgePrint(type, printData)
-
-    // 2. Also send via server action (direct spooler or Supabase queue)
-    if ((type === 'KOT' || type === 'BOTH') && printerSettings.enableKotPrint) {
-      void printJobAction({
-        type: 'KOT',
-        data: printData,
-        printerName: printerSettings.printerName || 'POSIO QX300',
-        paperWidth: printerSettings.paperWidth || 48,
-        branchId,
-      }).catch(err => {
-        console.warn('Background KOT print notice:', err)
-      })
-    }
-    if ((type === 'RECEIPT' || type === 'BOTH') && printerSettings.enableReceiptPrint) {
-      const delayMs = (type === 'BOTH' && printerSettings.enableKotPrint) ? 500 : 0
-      setTimeout(() => {
-        void printJobAction({
-          type: 'RECEIPT',
-          data: printData,
-          printerName: printerSettings.printerName || 'POSIO QX300',
-          paperWidth: printerSettings.paperWidth || 48,
-          branchId,
-        }).catch(err => {
-          console.warn('Background Receipt print notice:', err)
-        })
-      }, delayMs)
-    }
+    const wantKot = (type === 'KOT' || type === 'BOTH') && printerSettings.enableKotPrint
+    const wantReceipt = (type === 'RECEIPT' || type === 'BOTH') && printerSettings.enableReceiptPrint
+    void (async () => {
+      if (wantKot) await printDocument('KOT', printData).catch(err => console.warn('KOT print notice:', err))
+      if (wantReceipt) await printDocument('RECEIPT', printData).catch(err => console.warn('Receipt print notice:', err))
+    })()
   }
 
   // ─── KOT handler (Takeaway) ───────────────────────────────────────────────
@@ -1670,12 +1648,12 @@ export default function POSTerminal({
     return null
   }
 
-  const tryDirectLocalBridgePrint = async (type: 'KOT' | 'RECEIPT' | 'BOTH', data: ThermalOrderData) => {
-    if (!printerSettings.enableLocalBridge) return
+  const tryDirectLocalBridgePrint = async (type: 'KOT' | 'RECEIPT', data: ThermalOrderData): Promise<boolean> => {
+    if (!printerSettings.enableLocalBridge) return false
     try {
       // If local print bridge is running on cashier counter PC (http://127.0.0.1:8080/print),
       // send directly to local USB thermal printer with 0ms latency!
-      await fetch('http://127.0.0.1:8080/print', {
+      const res = await fetch('http://127.0.0.1:8080/print', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1686,9 +1664,31 @@ export default function POSTerminal({
         }),
         signal: AbortSignal.timeout(1200),
       })
+      return res.ok
     } catch {
-      // Local bridge not running or unreachable, continues via server action
+      // Local bridge not running or unreachable
+      return false
     }
+  }
+
+  // Print order: local bridge → browser print (silent with Chrome --kiosk-printing) → cloud queue
+  const printDocument = async (type: 'KOT' | 'RECEIPT', data: ThermalOrderData): Promise<{ success: boolean; error?: string }> => {
+    if (await tryDirectLocalBridgePrint(type, data)) return { success: true }
+    if (printerSettings.browserPrintFallback) {
+      await printViaBrowser(type, data, {
+        paperWidth: printerSettings.paperWidth,
+        showPrices: printerSettings.showPrices,
+        footerText: printerSettings.footerText,
+      })
+      return { success: true }
+    }
+    return printJobAction({
+      type,
+      data,
+      printerName: printerSettings.printerName || 'POSIO QX300',
+      paperWidth: printerSettings.paperWidth || 48,
+      branchId,
+    })
   }
 
   const handlePrintKOT = async (override?: any) => {
@@ -1700,14 +1700,7 @@ export default function POSTerminal({
 
     setKotPrintStatus('printing')
     try {
-      await tryDirectLocalBridgePrint('KOT', data)
-      const res = await printJobAction({
-        type: 'KOT',
-        data,
-        printerName: printerSettings.printerName || 'POSIO QX300',
-        paperWidth: printerSettings.paperWidth || 48,
-        branchId,
-      })
+      const res = await printDocument('KOT', data)
       if (res.success) {
         setKotPrintStatus('printed')
         setTimeout(() => setKotPrintStatus(null), 2500)
@@ -1730,14 +1723,7 @@ export default function POSTerminal({
 
     setBillPrintStatus('printing')
     try {
-      await tryDirectLocalBridgePrint('RECEIPT', data)
-      const res = await printJobAction({
-        type: 'RECEIPT',
-        data,
-        printerName: printerSettings.printerName || 'POSIO QX300',
-        paperWidth: printerSettings.paperWidth || 48,
-        branchId,
-      })
+      const res = await printDocument('RECEIPT', data)
       if (res.success) {
         setBillPrintStatus('printed')
         setTimeout(() => setBillPrintStatus(null), 2500)
@@ -3605,6 +3591,15 @@ export default function POSTerminal({
                         onChange={e => updatePrinterSettings({ enableLocalBridge: e.target.checked })}
                       />
                       <span>Direct Local Bridge (http://127.0.0.1:8080)</span>
+                    </label>
+
+                    <label className="checkbox-item">
+                      <input
+                        type="checkbox"
+                        checked={printerSettings.browserPrintFallback}
+                        onChange={e => updatePrinterSettings({ browserPrintFallback: e.target.checked })}
+                      />
+                      <span>Browser Print fallback (silent with Chrome --kiosk-printing)</span>
                     </label>
                   </div>
                 </div>

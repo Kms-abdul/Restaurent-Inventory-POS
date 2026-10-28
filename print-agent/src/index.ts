@@ -94,13 +94,32 @@ const server = http.createServer(async (req, res) => {
   res.end('Not found')
 })
 
+// Keep the agent alive: log unexpected errors instead of exiting
+process.on('uncaughtException', (err) => {
+  console.error('⚠️  Uncaught error (agent kept running):', err?.message ?? err)
+})
+process.on('unhandledRejection', (reason: any) => {
+  console.error('⚠️  Unhandled rejection (agent kept running):', reason?.message ?? reason)
+})
+
+server.on('error', (err: any) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`❌ Port ${HTTP_PORT} is already in use. Another print agent may be running.`)
+    process.exit(1)
+  }
+  console.error('❌ HTTP server error:', err.message)
+})
+
 server.listen(HTTP_PORT, '127.0.0.1', () => {
   console.log(`🚀 Direct Print HTTP Server running at http://127.0.0.1:${HTTP_PORT}/print`)
 })
 
 // ── 2. Background Cloud Queue Poller (Supabase print_jobs) ──────────────────
+let polling = false
+
 async function pollJobs() {
-  if (!supabase) return
+  if (!supabase || polling) return
+  polling = true
   try {
     let query = supabase
       .from('print_jobs')
@@ -121,12 +140,14 @@ async function pollJobs() {
     }
 
     for (const job of jobs ?? []) {
-      // Mark as printing immediately
-      await supabase
+      // Claim the job; skip it if another poll or agent already took it
+      const { data: claimed } = await supabase
         .from('print_jobs')
         .update({ status: 'printing', picked_up_at: new Date().toISOString() })
         .eq('id', job.id)
         .eq('status', 'pending')
+        .select('id')
+      if (!claimed?.length) continue
 
       try {
         await processPrintJob(job)
@@ -145,6 +166,8 @@ async function pollJobs() {
     }
   } catch (err: any) {
     console.error('Unexpected queue error:', err.message)
+  } finally {
+    polling = false
   }
 }
 
