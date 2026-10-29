@@ -168,11 +168,53 @@ export async function bulkCreateMenuItemsAction(formData: FormData) {
     })
   }
 
-  if (rows.length === 0) throw new Error('No valid items to create')
+  if (rows.length === 0) return { error: 'No valid items to create' }
 
   const admin = getAdminClient()
-  const { data: items, error } = await admin.from('menu_items').insert(rows).select('id')
-  if (error) throw new Error(error.message)
+
+  // Names are unique per restaurant: skip visible duplicates, revive hidden ones in place
+  const { data: existing } = await admin
+    .from('menu_items')
+    .select('id, name, is_active, is_available, menu_categories ( is_active )')
+    .eq('restaurant_id', ctx.restaurantId)
+  // Hidden = inactive, marked unavailable, or sitting in a hidden category
+  const existingByName = new Map((existing ?? []).map((e: any) => {
+    const cat = Array.isArray(e.menu_categories) ? e.menu_categories[0] : e.menu_categories
+    const visible = e.is_active && e.is_available && cat?.is_active !== false
+    return [e.name as string, { id: e.id as string, visible }]
+  }))
+  const seen = new Set<string>()
+  const skipped: string[] = []
+  const newRows: typeof rows = []
+  const revived: { id: string; row: (typeof rows)[number] }[] = []
+  for (const r of rows) {
+    if (seen.has(r.name)) { skipped.push(r.name); continue }
+    seen.add(r.name)
+    const match = existingByName.get(r.name)
+    if (!match) newRows.push(r)
+    else if (match.visible) skipped.push(r.name)
+    else revived.push({ id: match.id, row: r })
+  }
+
+  if (newRows.length === 0 && revived.length === 0) {
+    return { error: `All items already exist: ${skipped.join(', ')}` }
+  }
+
+  const items: { id: string }[] = []
+  if (newRows.length > 0) {
+    const { data, error } = await admin.from('menu_items').insert(newRows).select('id')
+    // Return (not throw) so the real message reaches the client in production
+    if (error) return { error: error.message }
+    items.push(...(data ?? []))
+  }
+  for (const { id, row } of revived) {
+    const { error } = await admin
+      .from('menu_items')
+      .update({ category_id: row.category_id, description: row.description, price: row.price, is_available: true, is_active: true })
+      .eq('id', id)
+    if (error) return { error: error.message }
+    items.push({ id })
+  }
 
   // Assign all items to all branches by default
   const { data: allBranches } = await admin
@@ -188,11 +230,13 @@ export async function bulkCreateMenuItemsAction(formData: FormData) {
         is_available: true,
       }))
     )
-    await admin.from('branch_menu_items').upsert(branchRows, { onConflict: 'branch_id,menu_item_id' })
+    const { error: branchError } = await admin.from('branch_menu_items').upsert(branchRows, { onConflict: 'branch_id,menu_item_id' })
+    if (branchError) return { error: `Items saved, but branch assignment failed: ${branchError.message}` }
   }
 
   revalidatePath('/restaurant/menu')
   revalidatePath('/staff/pos')
+  return { error: null, created: newRows.length + revived.length, skipped }
 }
 
 export async function updateMenuCategoryAction(formData: FormData) {

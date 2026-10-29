@@ -37,6 +37,7 @@ export default function BulkItemsForm({ categories, defaultCategoryId }: Props) 
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [savedCount, setSavedCount] = useState<number | null>(null)
+  const [skippedNames, setSkippedNames] = useState<string[]>([])
   const [importMode, setImportMode] = useState<'manual' | 'excel'>('manual')
   const [dragOver, setDragOver] = useState(false)
   const [importPreview, setImportPreview] = useState<{ total: number; matched: number; unmatched: string[] } | null>(null)
@@ -184,8 +185,10 @@ export default function BulkItemsForm({ categories, defaultCategoryId }: Props) 
 
     startTransition(async () => {
       try {
-        await bulkCreateMenuItemsAction(formData)
-        setSavedCount(validRows.length)
+        const res = await bulkCreateMenuItemsAction(formData)
+        if (res?.error) { setError(res.error); return }
+        setSkippedNames(res?.skipped ?? [])
+        setSavedCount(res?.created ?? validRows.length)
       } catch (err: any) {
         setError(err?.message ?? 'Failed to save items')
       }
@@ -215,6 +218,11 @@ export default function BulkItemsForm({ categories, defaultCategoryId }: Props) 
           <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎉</div>
           <h2 style={{ color: '#15803d', marginBottom: '0.5rem' }}>{savedCount} Items Saved!</h2>
           <p style={{ color: '#166534', marginBottom: '1.5rem' }}>Your menu items have been added successfully.</p>
+          {skippedNames.length > 0 && (
+            <p style={{ color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '0.5rem', padding: '0.6rem 1rem', marginBottom: '1.5rem', fontSize: '0.85rem' }}>
+              ⚠️ Skipped {skippedNames.length} already on the menu: <strong>{skippedNames.join(', ')}</strong>
+            </p>
+          )}
           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
             <button className="btn-ghost" onClick={() => { setSavedCount(null); setRows([newRow(globalCategoryId), newRow(globalCategoryId), newRow(globalCategoryId)]); setImportPreview(null) }}>
               + Add More
