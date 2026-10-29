@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getUserContext, createClient } from '@/utils/supabase/server'
+import OrderRecords, { type ReportOrder } from './OrderRecords'
 
 export const metadata = { title: 'Reports & Analytics' }
 
@@ -38,8 +39,9 @@ export default async function ReportsPage({
   let query = supabase
     .from('orders')
     .select(`
-      id, order_no, total_amount, discount_amount, status, payment_mode, fulfillment, source, created_at, branch_id,
-      branches ( name )
+      id, order_no, total_amount, discount_amount, status, payment_mode, fulfillment, source, created_at, branch_id, void_reason,
+      branches ( name ),
+      order_items ( item_name_at_sale, qty, line_total )
     `)
     .eq('restaurant_id', ctx.restaurantId)
     .gte('created_at', startDate.toISOString())
@@ -51,6 +53,18 @@ export default async function ReportsPage({
 
   const { data: ordersData } = await query
   const orders = ordersData ?? []
+
+  const reportOrders: ReportOrder[] = orders.map((o: any) => ({
+    id: o.id,
+    order_no: o.order_no,
+    created_at: o.created_at,
+    branchName: (Array.isArray(o.branches) ? o.branches[0]?.name : o.branches?.name) ?? null,
+    payment_mode: o.payment_mode,
+    status: o.status,
+    total_amount: o.total_amount || 0,
+    void_reason: o.void_reason ?? null,
+    items: (o.order_items ?? []).map((i: any) => ({ name: i.item_name_at_sale, qty: i.qty, line_total: i.line_total })),
+  }))
 
   // Metrics
   const settledOrders = orders.filter(o => o.status === 'settled')
@@ -199,66 +213,8 @@ export default async function ReportsPage({
         </div>
       </div>
 
-      {/* Orders History Table */}
-      <div className="ra-section" style={{ padding: 0, background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '1rem', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-        <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a' }}>Order Records ({orders.length})</h2>
-        </div>
-
-        <div className="sa-table-wrap">
-          <table className="sa-table">
-            <thead>
-              <tr>
-                <th>Order #</th>
-                <th>Time</th>
-                <th>Branch</th>
-                <th>Payment</th>
-                <th>Status</th>
-                <th>Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="sa-empty">
-                    No orders recorded for this time range.
-                  </td>
-                </tr>
-              ) : (
-                orders.slice(0, 50).map((o: any) => {
-                  const branchName = Array.isArray(o.branches) ? o.branches[0]?.name : o.branches?.name
-                  return (
-                    <tr key={o.id}>
-                      <td style={{ fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
-                        #{o.order_no}
-                      </td>
-                      <td style={{ color: '#475569', fontSize: '0.85rem' }}>
-                        {new Date(o.created_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}
-                      </td>
-                      <td style={{ color: '#334155', fontSize: '0.85rem' }}>
-                        {branchName ?? '—'}
-                      </td>
-                      <td>
-                        <span style={{ textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>
-                          {o.payment_mode}
-                        </span>
-                      </td>
-                      <td>
-                        <span className={`badge ${o.status === 'settled' ? 'badge-green' : o.status === 'voided' ? 'badge-red' : 'badge-amber'}`}>
-                          {o.status}
-                        </span>
-                      </td>
-                      <td style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.95rem' }}>
-                        ₹{(Number(o.total_amount) / 100).toFixed(2)}
-                      </td>
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {/* Orders History Table (items, cancel, Excel export) */}
+      <OrderRecords orders={reportOrders} rangeLabel={range} />
     </div>
   )
 }

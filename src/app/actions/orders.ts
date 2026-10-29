@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient, createServiceClient, getActionContext } from '@/utils/supabase/server'
+import { createClient, createServiceClient, getActionContext, getUserContext } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { CartItem, PaymentMode } from '@/types/database'
 
@@ -154,7 +154,6 @@ export async function createPOSOrder(params: {
   }
 
   // Only revalidate the POS page — dashboard picks it up on next natural visit
-  revalidatePath('/staff/pos')
   return result
 }
 
@@ -232,7 +231,6 @@ export async function createKOTOrder(params: {
     }
   }
 
-  revalidatePath('/staff/pos')
   return result
 }
 
@@ -329,7 +327,6 @@ export async function addItemsToHeldOrder(params: {
     }
   }
 
-  revalidatePath('/staff/pos')
   return { success: true, newTotal }
 }
 
@@ -396,7 +393,6 @@ export async function checkoutHeldOrder(params: {
     }
   }
 
-  revalidatePath('/staff/pos')
   revalidatePath('/staff/kitchen')
   return { success: true }
 }
@@ -478,7 +474,6 @@ export async function checkoutMultipleOrders(params: {
     }
   }
 
-  revalidatePath('/staff/pos')
   revalidatePath('/staff/kitchen')
   return { success: true }
 }
@@ -538,7 +533,6 @@ export async function voidOrder(orderId: string, reason: string) {
     .eq('status', 'active')
 
   if (error) throw new Error(error.message)
-  revalidatePath('/staff/pos')
 }
 
 /**
@@ -565,7 +559,6 @@ export async function voidTableOrders(params: {
     .eq('status', 'active')
 
   if (error) throw new Error(error.message)
-  revalidatePath('/staff/pos')
   return { success: true }
 }
 
@@ -613,7 +606,6 @@ export async function transferTableOrder(params: {
     if (updateErr) throw new Error(updateErr.message)
   }
 
-  revalidatePath('/staff/pos')
   return { success: true }
 }
 
@@ -655,4 +647,32 @@ export async function replaceTableOrder(params: {
     cashierName: params.cashierName,
     enableKotPrint: params.enableKotPrint,
   })
+}
+
+/**
+ * CANCEL FROM SALES REPORT: void any non-voided order (active or settled).
+ * Restaurant admins, super admins, or staff with pos.void_order only.
+ */
+export async function cancelOrderFromReport(orderId: string, reason: string) {
+  const ctx = await getUserContext()
+  if (!ctx) throw new Error('Unauthorized')
+  const allowed = ctx.isSuperAdmin || (ctx.restaurantId && !ctx.branchId) || ctx.permissions.has('pos.void_order')
+  if (!allowed) throw new Error('You do not have permission to cancel orders')
+
+  const supabase = ctx.isSuperAdmin ? await createServiceClient() : await createClient()
+  let query = supabase
+    .from('orders')
+    .update({
+      status: 'voided',
+      voided_at: new Date().toISOString(),
+      void_reason: reason.trim() || 'Cancelled from sales report',
+    })
+    .eq('id', orderId)
+    .neq('status', 'voided')
+  if (!ctx.isSuperAdmin && ctx.restaurantId) query = query.eq('restaurant_id', ctx.restaurantId)
+
+  const { error } = await query
+  if (error) throw new Error(error.message)
+  revalidatePath('/restaurant/reports')
+  return { success: true }
 }
