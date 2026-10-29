@@ -1015,7 +1015,9 @@ export default function POSTerminal({
         setCart([])
         clearDiscount()
         setOrderNotes('')
-        // Keep tableLabel so next round is for the same table by default
+        // Release the table so the next order (takeaway or another table) isn't
+        // added to it; pick the table again (or "Add" on Live Tables) for its next round
+        setTableLabel('')
         setDineInStatus('success')
         setMobileOrderView('menu')
         setTimeout(() => setDineInStatus('idle'), 3000)
