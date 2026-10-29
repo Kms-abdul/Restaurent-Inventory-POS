@@ -88,7 +88,7 @@ export default async function SuperAdminDashboard() {
                         {r.is_active ? 'Active' : 'Inactive'}
                       </span>
                     </td>
-                    <td>{new Date(r.created_at).toLocaleDateString()}</td>
+                    <td>{new Date(r.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}</td>
                     <td>
                       <Link href={`/super-admin/restaurants/${r.id}`} className="link-action">
                         Manage

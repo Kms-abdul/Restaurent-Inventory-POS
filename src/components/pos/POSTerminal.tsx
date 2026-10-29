@@ -502,8 +502,8 @@ export default function POSTerminal({
       setRecentOrders(orders || [])
       if (orders && orders.length > 0) {
         // Track order number day-by-day: only check today's orders so yesterday's count doesn't inflate today
-        const todayStr = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD in local time
-        const todayOrders = orders.filter(o => new Date(o.created_at).toLocaleDateString('en-CA') === todayStr)
+        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) // YYYY-MM-DD in local time
+        const todayOrders = orders.filter(o => new Date(o.created_at).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) === todayStr)
         if (todayOrders.length > 0) {
           const highestNo = Math.max(...todayOrders.map(o => o.order_no || 0))
           setNextOrderNo(highestNo + 1)
@@ -561,7 +561,7 @@ export default function POSTerminal({
         const latest = orders[0]
         setLastOrder(prev => prev ?? {
           order_no: latest.order_no,
-          invoice: `INV-${new Date(latest.created_at).toISOString().slice(0, 10).replace(/-/g, '')}-${String(latest.order_no).padStart(4, '0')}`,
+          invoice: `INV-${new Date(latest.created_at).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }).replace(/-/g, '')}-${String(latest.order_no).padStart(4, '0')}`,
           subtotal: ((latest.total_amount || 0) + (latest.discount_amount || 0)) / 100,
           discount: (latest.discount_amount || 0) / 100,
           discount_reason: latest.notes || '',
@@ -574,7 +574,7 @@ export default function POSTerminal({
             qty: oi.qty ?? 1,
             lineTotal: oi.line_total ?? 0,
           })),
-          time: new Date(latest.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          time: new Date(latest.created_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit' }),
           payment_mode: latest.payment_mode || 'cash',
           notes: latest.notes || '',
         })
@@ -870,7 +870,7 @@ export default function POSTerminal({
     setKotStatus('pending')
     startTransition(async () => {
       try {
-        const orderTime = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        const orderTime = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit' })
         let combinedNotes = orderNotes.trim()
         if (discountPaise > 0) {
           const discTag = discountReason.trim() || (isRelativeOrFree ? 'Relative (Free)' : `${discountValue}% Off`)
@@ -918,7 +918,7 @@ export default function POSTerminal({
 
         setLastOrder({
           order_no: result.order_no,
-          invoice: `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(result.order_no).padStart(4, '0')}`,
+          invoice: `INV-${new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }).replace(/-/g, '')}-${String(result.order_no).padStart(4, '0')}`,
           subtotal: subtotalRupees,
           discount: 0,
           total: subtotalRupees,
@@ -1231,8 +1231,8 @@ export default function POSTerminal({
             void loadOrders()
           } else {
             // Immediate table checkout (Direct Dine-In checkout)
-            const orderTime = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-            const invoiceStr = `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(nextOrderNo).padStart(4, '0')}`
+            const orderTime = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+            const invoiceStr = `INV-${new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }).replace(/-/g, '')}-${String(nextOrderNo).padStart(4, '0')}`
 
             let combinedNotes = orderNotes.trim()
             if (discountPaise > 0) {
@@ -1324,8 +1324,8 @@ export default function POSTerminal({
     setCheckoutStatus('pending')
     startTransition(async () => {
       try {
-        const orderTime = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-        const invoiceStr = `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(nextOrderNo).padStart(4, '0')}`
+        const orderTime = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        const invoiceStr = `INV-${new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }).replace(/-/g, '')}-${String(nextOrderNo).padStart(4, '0')}`
 
         let combinedNotes = orderNotes.trim()
         if (discountPaise > 0) {
@@ -1572,7 +1572,7 @@ export default function POSTerminal({
       }
       return {
         order_no: nextOrderNo,
-        time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase(),
+        time: new Date().toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase(),
         cashier: cashierName,
         notes: combinedNotes || undefined,
         items: cart.map(i => ({ name: i.name, qty: i.qty })),
@@ -1582,7 +1582,7 @@ export default function POSTerminal({
     if (lastOrder && lastOrder.items && lastOrder.items.length > 0) {
       return {
         order_no: lastOrder.order_no,
-        time: lastOrder.time || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase(),
+        time: lastOrder.time || new Date().toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase(),
         cashier: cashierName,
         notes: lastOrder.notes || undefined,
         items: lastOrder.items.map(i => ({ name: i.name, qty: i.qty })),
@@ -2502,7 +2502,7 @@ export default function POSTerminal({
                               key={t}
                               type="button"
                               className={`table-quick-btn ${tableLabel === t ? 'active' : ''} ${isOcc ? 'table-quick-btn-occupied' : ''}`}
-                              onClick={() => setTableLabel(t)}
+                              onClick={() => setTableLabel(prev => (prev === t ? '' : t))}
                               title={isOcc ? `${t} (Occupied - ₹${(dineInByTable[t].reduce((s,o)=>s+o.total_amount,0)/100).toFixed(0)})` : `${t} (Available)`}
                             >
                               {t}
@@ -2614,7 +2614,7 @@ export default function POSTerminal({
                                     <span className="held-order-num">🪑 Table {tbl}</span>
                                     <span className="held-order-table">{orders.length} round{orders.length > 1 ? 's' : ''}</span>
                                     <span className="held-order-time">
-                                      {new Date(orders[0].created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                      {new Date(orders[0].created_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })}
                                     </span>
                                   </div>
                                   <div className="held-order-items-preview">
@@ -3025,7 +3025,7 @@ export default function POSTerminal({
                                 key={t}
                                 type="button"
                                 className={`table-quick-btn ${tableLabel === t ? 'active' : ''} ${isOcc ? 'table-quick-btn-occupied' : ''}`}
-                                onClick={() => setTableLabel(t)}
+                                onClick={() => setTableLabel(prev => (prev === t ? '' : t))}
                                 title={isOcc ? `${t} (Occupied - ₹${(dineInByTable[t].reduce((s,o)=>s+o.total_amount,0)/100).toFixed(0)})` : `${t} (Available)`}
                               >
                                 {t}
@@ -3133,7 +3133,7 @@ export default function POSTerminal({
                                       <span className="held-order-num">🪑 Table {tbl}</span>
                                       <span className="held-order-table">{orders.length} round{orders.length > 1 ? 's' : ''}</span>
                                       <span className="held-order-time">
-                                        {new Date(orders[0].created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                        {new Date(orders[0].created_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })}
                                       </span>
                                     </div>
                                     <div className="held-order-items-preview">
@@ -3395,7 +3395,7 @@ export default function POSTerminal({
 
                       <div className="kot-ticket-body">
                         <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '0.5rem' }}>
-                          🕐 {new Date(o.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                          🕐 {new Date(o.created_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })}
                           &nbsp;·&nbsp; {o.type === 'dine-in' ? '🍽️ Dine-in' : '🥡 Takeaway'}
                         </div>
                         <div className="kot-items-heading">ITEMS:</div>
@@ -3490,7 +3490,7 @@ export default function POSTerminal({
                         <div className="packer-order-top">
                           <span className="packer-order-title">ORDER #{o.order_no}</span>
                           <span className="packer-order-time">
-                            {new Date(o.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                            {new Date(o.created_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                           </span>
                         </div>
                         <div className="packer-order-items">
@@ -3673,7 +3673,7 @@ export default function POSTerminal({
 
 Printer: ${printerSettings.printerName || 'POSIO QX300'}
 Width: ${printerSettings.paperWidth} chars
-Time: ${mounted ? new Date().toLocaleTimeString('en-IN') : '12:00:00 PM'}
+Time: ${mounted ? new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' }) : '12:00:00 PM'}
 
 ------------------------------------------------
            Printer working correctly!`}</pre>
@@ -3691,7 +3691,7 @@ Time: ${mounted ? new Date().toLocaleTimeString('en-IN') : '12:00:00 PM'}
           <div className="print-divider">===============================</div>
           <div className="print-order-no" suppressHydrationWarning>ORDER #{activePrintTicket?.order_no ?? nextOrderNo}</div>
           <div className="print-divider">===============================</div>
-          <div className="print-meta-line" suppressHydrationWarning>Time: {activePrintTicket?.time ?? (mounted ? new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase() : '')}</div>
+          <div className="print-meta-line" suppressHydrationWarning>Time: {activePrintTicket?.time ?? (mounted ? new Date().toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase() : '')}</div>
           <div className="print-meta-line" suppressHydrationWarning>By: {activePrintTicket?.cashier ?? cashierName}</div>
           {activePrintTicket?.notes && (
             <div className="print-meta-line">Note: {activePrintTicket.notes}</div>

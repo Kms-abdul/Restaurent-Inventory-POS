@@ -113,7 +113,7 @@ export default async function AdministratorsPage() {
                         </span>
                       </td>
                       <td style={{ color: '#64748b', fontSize: '0.85rem' }}>
-                        {new Date(m.created_at).toLocaleDateString('en-IN')}
+                        {new Date(m.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}
                       </td>
                       <td>
                         {!isCurrentUser && m.is_active && (

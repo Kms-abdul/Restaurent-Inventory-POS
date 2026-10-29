@@ -40,8 +40,8 @@ export function buildHtml(type: 'KOT' | 'RECEIPT', data: ThermalOrderData, opts:
   } else {
     const name = (data.restaurantName || 'CHINESE NAWAB').toUpperCase()
     const created = new Date(data.createdAt ?? Date.now())
-    const dateStr = created.toLocaleDateString('en-IN')
-    const timeStr = created.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+    const dateStr = created.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })
+    const timeStr = created.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true })
     const itemColChars = Math.floor(width * 0.62)
     const row = (item: string, qty: string, total: string, cls = '') =>
       `<div class="tbl ${cls}"><span>${esc(item)}</span><span class="c">${esc(qty)}</span><span class="r">${esc(total)}</span></div>`

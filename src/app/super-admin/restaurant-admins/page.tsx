@@ -150,7 +150,7 @@ export default async function RestaurantAdminsPage({
                         </Link>
                       </td>
                       <td style={{ color: '#64748b', fontSize: '0.8rem' }}>
-                        {lastLogin ? new Date(lastLogin).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'Never'}
+                        {lastLogin ? new Date(lastLogin).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'Never'}
                       </td>
                       <td>
                         <span className={`badge ${isActive ? 'badge-green' : 'badge-red'}`}>

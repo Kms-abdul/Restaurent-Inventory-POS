@@ -13,7 +13,7 @@ function formatYMD(d: Date): string {
 
 function formatDateReadable(d: Date): string {
   return d.toLocaleDateString('en-IN', {
-    day: '2-digit',
+    timeZone: 'Asia/Kolkata', day: '2-digit',
     month: 'short',
     year: 'numeric',
   })
@@ -213,8 +213,8 @@ export default async function CollectionReportPage({
     if (!perDay[dayKey]) {
       perDay[dayKey] = {
         date: dayKey,
-        displayDate: orderDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
-        dayName: orderDate.toLocaleDateString('en-IN', { weekday: 'short' }),
+        displayDate: orderDate.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }),
+        dayName: orderDate.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short' }),
         ordersCount: 0,
         cash: 0,
         upi: 0,
@@ -664,7 +664,7 @@ export default async function CollectionReportPage({
                     <tr key={o.id}>
                       <td style={{ fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>#{o.order_no}</td>
                       <td style={{ color: '#64748b', fontSize: '0.85rem' }}>
-                        {formatDateReadable(oDate)}, {oDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                        {formatDateReadable(oDate)}, {oDate.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })}
                       </td>
                       <td style={{ color: '#475569', fontSize: '0.85rem' }}>
                         {o.branches?.name ?? '—'}

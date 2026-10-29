@@ -209,10 +209,10 @@ export default async function StockAuditPage({
                           href={`/restaurant/inventory/audit?branch=${activeBranch.id}&date=${auditDateStr}`}
                           style={{ color: '#0f172a', textDecoration: 'none', fontWeight: 600 }}
                         >
-                          {new Date(sc.counted_at).toLocaleDateString('en-IN', { dateStyle: 'medium' })}
+                          {new Date(sc.counted_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium' })}
                         </Link>
                         <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                          {new Date(sc.counted_at).toLocaleTimeString('en-IN', { timeStyle: 'short' })}
+                          {new Date(sc.counted_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', timeStyle: 'short' })}
                         </div>
                       </td>
                       <td>

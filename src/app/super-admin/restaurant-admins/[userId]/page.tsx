@@ -57,7 +57,7 @@ export default async function EditRestaurantAdminPage({
           <Link href="/super-admin/restaurant-admins" style={{ color: '#2563eb', fontSize: '0.875rem', fontWeight: 600, textDecoration: 'none' }}>← Back to Restaurant Admins</Link>
           <h1 style={{ marginTop: '0.5rem', color: '#0f172a' }}>Edit Admin: {profile.name}</h1>
           <p style={{ color: '#64748b', fontSize: '0.875rem', marginTop: '0.25rem' }}>
-            {authUser?.email} · Joined {new Date(profile.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+            {authUser?.email} · Joined {new Date(profile.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'long', year: 'numeric' })}
           </p>
         </div>
         <span className={`badge ${isActive ? 'badge-green' : 'badge-red'}`} style={{ fontSize: '0.85rem', padding: '0.35rem 0.85rem' }}>
@@ -186,7 +186,7 @@ export default async function EditRestaurantAdminPage({
           {[
             { label: 'User ID',      value: userId,                                                     mono: true },
             { label: 'Email',        value: authUser?.email ?? '—' },
-            { label: 'Created',      value: new Date(profile.created_at).toLocaleDateString('en-IN') },
+            { label: 'Created',      value: new Date(profile.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) },
             { label: 'Last Login',   value: authUser?.last_sign_in_at ? new Date(authUser.last_sign_in_at).toLocaleString('en-IN') : 'Never' },
             { label: 'Auth Provider', value: authUser?.app_metadata?.provider ?? 'email' },
           ].map(item => (

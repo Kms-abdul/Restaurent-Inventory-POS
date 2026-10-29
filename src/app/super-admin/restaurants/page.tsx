@@ -133,7 +133,7 @@ export default async function RestaurantsPage({
                       </span>
                     </td>
                     <td style={{ color: '#64748b', fontSize: '0.85rem' }}>
-                      {new Date(r.created_at).toLocaleDateString('en-IN')}
+                      {new Date(r.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}
                     </td>
                     <td>
                       <Link href={`/super-admin/restaurants/${r.id}`} className="link-action">

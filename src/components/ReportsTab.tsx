@@ -112,7 +112,7 @@ export default function ReportsTab({ active }: { active: boolean }) {
                 orders.map(order => (
                   <tr key={order.id} style={{ borderBottom: "1px solid #1e293b" }}>
                     <td style={{ padding: "0.5rem" }}>{order.order_no}</td>
-                    <td style={{ padding: "0.5rem" }}>{new Date(order.created_at).toLocaleTimeString()}</td>
+                    <td style={{ padding: "0.5rem" }}>{new Date(order.created_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}</td>
                     <td style={{ padding: "0.5rem", textTransform: "capitalize" }}>{order.payment_mode}</td>
                     <td style={{ padding: "0.5rem" }}>{order.profiles?.name || 'Cashier'}</td>
                     <td style={{ padding: "0.5rem", textAlign: "right", fontWeight: "600" }}>₹{(order.total_amount / 100).toFixed(2)}</td>

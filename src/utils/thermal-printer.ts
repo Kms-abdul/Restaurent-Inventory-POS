@@ -59,10 +59,10 @@ export function buildReceipt(printer: ThermalPrinter, data: ThermalOrderData) {
 
   printer.drawLine()
 
-  const dateStr = data.createdAt ? new Date(data.createdAt).toLocaleDateString('en-IN') : new Date().toLocaleDateString('en-IN')
+  const dateStr = data.createdAt ? new Date(data.createdAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })
   const timeStr = data.createdAt ? new Date(data.createdAt).toLocaleTimeString('en-IN', {
-    hour: '2-digit', minute: '2-digit', hour12: true,
-  }) : new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+    timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true,
+  }) : new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true })
 
   printer.leftRight(`Order: #${data.orderNumber}`, `${dateStr} ${timeStr}`)
   if (data.cashierName) {
@@ -145,8 +145,8 @@ export function buildKOT(printer: ThermalPrinter, data: ThermalOrderData) {
   printer.drawLine('=')
 
   const timeStr = data.createdAt ? new Date(data.createdAt).toLocaleTimeString('en-IN', {
-    hour: '2-digit', minute: '2-digit', hour12: true,
-  }) : new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+    timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true,
+  }) : new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true })
 
   printer.alignLeft()
   printer.println(`Time: ${timeStr}`)
@@ -184,7 +184,7 @@ export function buildTest(printer: ThermalPrinter, printerName: string, width: n
   printer.alignLeft()
   printer.println(`Printer: ${printerName}`)
   printer.println(`Width: ${width} chars`)
-  printer.println(`Time: ${new Date().toLocaleTimeString('en-IN')}`)
+  printer.println(`Time: ${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}`)
   printer.newLine()
   printer.drawLine()
   printer.alignCenter()

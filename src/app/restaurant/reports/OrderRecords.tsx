@@ -20,7 +20,7 @@ export interface ReportOrder {
 const MAX_ROWS_ON_SCREEN = 200
 
 const rupees = (paise: number) => (Number(paise || 0) / 100).toFixed(2)
-const fmtTime = (iso: string) => new Date(iso).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })
+const fmtTime = (iso: string) => new Date(iso).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'short' })
 
 export default function OrderRecords({ orders, rangeLabel }: { orders: ReportOrder[]; rangeLabel: string }) {
   const router = useRouter()

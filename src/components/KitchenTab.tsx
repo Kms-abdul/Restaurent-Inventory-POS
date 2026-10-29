@@ -75,7 +75,7 @@ export default function KitchenTab({ active }: { active: boolean }) {
               <div key={order.id} style={{ background: "#1e293b", padding: "1rem", borderRadius: "0.5rem", marginBottom: "1rem", borderLeft: "4px solid #f87171" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.5rem" }}>
                   <span style={{ fontWeight: 700, fontSize: "1.25rem" }}>Order #{order.order_no}</span>
-                  <span style={{ color: "#94a3b8" }}>{new Date(order.created_at).toLocaleTimeString()}</span>
+                  <span style={{ color: "#94a3b8" }}>{new Date(order.created_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}</span>
                 </div>
                 {order.table_number && <div style={{ color: "#fbbf24", marginBottom: "0.5rem" }}>Table: {order.table_number}</div>}
                 
@@ -110,7 +110,7 @@ export default function KitchenTab({ active }: { active: boolean }) {
               <div key={order.id} style={{ background: "#1e293b", padding: "1rem", borderRadius: "0.5rem", marginBottom: "1rem", borderLeft: "4px solid #60a5fa" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.5rem" }}>
                   <span style={{ fontWeight: 700, fontSize: "1.25rem" }}>Order #{order.order_no}</span>
-                  <span style={{ color: "#94a3b8" }}>{new Date(order.created_at).toLocaleTimeString()}</span>
+                  <span style={{ color: "#94a3b8" }}>{new Date(order.created_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}</span>
                 </div>
                 {order.table_number && <div style={{ color: "#fbbf24", marginBottom: "0.5rem" }}>Table: {order.table_number}</div>}
                 
