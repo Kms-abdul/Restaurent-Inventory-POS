@@ -70,7 +70,7 @@ export default async function EditCategoryPage({ params }: { params: Promise<{ i
           />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+        <div className="rsp-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
             <label style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0f172a' }}>Sort Order</label>
             <input
@@ -109,7 +109,7 @@ export default async function EditCategoryPage({ params }: { params: Promise<{ i
           </div>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', paddingTop: '1.25rem', borderTop: '1px solid #e2e8f0' }}>
+        <div className="rsp-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', paddingTop: '1.25rem', borderTop: '1px solid #e2e8f0' }}>
           <button
             type="submit"
             formNoValidate
@@ -132,7 +132,7 @@ export default async function EditCategoryPage({ params }: { params: Promise<{ i
             Delete Category
           </button>
 
-          <div style={{ display: 'flex', gap: '1rem' }}>
+          <div className="rsp-actions" style={{ display: 'flex', gap: '1rem' }}>
             <Link href="/restaurant/menu" className="btn-secondary">Cancel</Link>
             <button type="submit" className="btn-primary">Save Changes</button>
           </div>

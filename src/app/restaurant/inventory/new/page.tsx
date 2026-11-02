@@ -51,7 +51,7 @@ export default async function NewInventoryItemPage() {
           />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+        <div className="rsp-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
             <label style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0f172a' }}>Measurement Unit *</label>
             <select
@@ -175,7 +175,7 @@ export default async function NewInventoryItemPage() {
           </div>
         )}
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
+        <div className="rsp-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
           <Link href="/restaurant/inventory" className="btn-secondary">Cancel</Link>
           <button type="submit" className="btn-primary">Add Item</button>
         </div>

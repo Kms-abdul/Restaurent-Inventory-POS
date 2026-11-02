@@ -52,12 +52,12 @@ export default async function MenuPage() {
         cats.map((cat: any) => (
           <div key={cat.id} className="ra-section" style={{ marginBottom: '1.25rem' }}>
             <div className="ra-section-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div className="rsp-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                 <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>{cat.name}</h2>
                 <span className={`badge ${cat.is_active ? 'badge-green' : 'badge-red'}`}>{cat.is_active ? 'Active' : 'Hidden'}</span>
                 <span className="badge badge-blue">{cat.menu_items?.length ?? 0} items</span>
               </div>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <div className="rsp-wrap" style={{ display: 'flex', gap: '0.5rem' }}>
                 <Link href={`/restaurant/menu/categories/${cat.id}/edit`} className="btn-ghost-sm">Edit Category</Link>
                 <Link href={`/restaurant/menu/items/new?category=${cat.id}`} className="btn-ghost-sm">+ Item</Link>
                 <Link href={`/restaurant/menu/items/bulk?category=${cat.id}`} className="btn-ghost-sm" style={{ color: '#7c3aed', borderColor: '#ddd6fe', background: '#faf5ff' }}>⚡ Bulk Items</Link>
@@ -65,7 +65,7 @@ export default async function MenuPage() {
             </div>
 
             {(cat.menu_items ?? []).length > 0 ? (
-              <table className="sa-table">
+              <div className="sa-table-wrap"><table className="sa-table">
                 <thead>
                   <tr>
                     <th>Item</th>
@@ -122,7 +122,7 @@ export default async function MenuPage() {
                     )
                   })}
                 </tbody>
-              </table>
+              </table></div>
             ) : (
               <p style={{ color: '#64748b', fontSize: '0.875rem', padding: '0.75rem 0' }}>No items in this category yet.</p>
             )}

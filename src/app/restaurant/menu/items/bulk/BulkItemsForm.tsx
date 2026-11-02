@@ -484,12 +484,12 @@ export default function BulkItemsForm({ categories, defaultCategoryId }: Props) 
         </div>
 
         {/* Footer */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="rsp-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
             {validCount} of {rows.length} rows will be saved
             {globalCatName && <> → <strong style={{ color: '#4f46e5' }}>default: {globalCatName}</strong></>}
           </span>
-          <div style={{ display: 'flex', gap: '1rem' }}>
+          <div className="rsp-actions" style={{ display: 'flex', gap: '1rem' }}>
             <Link href="/restaurant/menu" className="btn-secondary">Cancel</Link>
             <button
               type="submit" className="btn-primary" disabled={isPending}

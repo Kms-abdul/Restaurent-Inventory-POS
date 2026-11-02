@@ -524,7 +524,7 @@ export default function StockAuditForm({
           }}
         />
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+        <div className="rsp-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem', flexWrap: 'wrap', gap: '1rem' }}>
           <div style={{ fontSize: '0.85rem', color: '#64748b' }}>
             Saving this audit will lock the physical closing count for <strong>{date}</strong> and update tomorrow&apos;s opening inventory.
           </div>

@@ -122,7 +122,7 @@ export default function BulkCategoriesPage() {
       <form onSubmit={handleSubmit}>
         <div className="ra-section" style={{ padding: '1.5rem', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '1rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', marginBottom: '1rem' }}>
           {/* Header row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 3fr 90px 44px', gap: '0.75rem', marginBottom: '0.5rem', paddingBottom: '0.5rem', borderBottom: '1px solid #f1f5f9' }}>
+          <div className="rsp-minw" style={{ display: 'grid', gridTemplateColumns: '2fr 3fr 90px 44px', gap: '0.75rem', marginBottom: '0.5rem', paddingBottom: '0.5rem', borderBottom: '1px solid #f1f5f9' }}>
             <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', paddingLeft: '1.9rem' }}>Category Name *</span>
             <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Description</span>
             <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Order</span>
@@ -132,7 +132,7 @@ export default function BulkCategoriesPage() {
           {/* Data rows */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
             {rows.map((row, idx) => (
-              <div key={row.id} style={{ display: 'grid', gridTemplateColumns: '2fr 3fr 90px 44px', gap: '0.75rem', alignItems: 'center' }}>
+              <div key={row.id} className="rsp-minw" style={{ display: 'grid', gridTemplateColumns: '2fr 3fr 90px 44px', gap: '0.75rem', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <span style={{ fontSize: '0.78rem', color: '#94a3b8', fontWeight: 600, minWidth: '1.4rem', textAlign: 'right' }}>{idx + 1}.</span>
                   <input
@@ -211,11 +211,11 @@ export default function BulkCategoriesPage() {
           💡 <strong>Tip:</strong> Only rows with a Category Name will be saved. Empty rows are ignored automatically.
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="rsp-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
             {rows.filter(r => r.name.trim()).length} of {rows.length} rows will be saved
           </span>
-          <div style={{ display: 'flex', gap: '1rem' }}>
+          <div className="rsp-actions" style={{ display: 'flex', gap: '1rem' }}>
             <Link href="/restaurant/menu" className="btn-secondary">Cancel</Link>
             <button
               type="submit"

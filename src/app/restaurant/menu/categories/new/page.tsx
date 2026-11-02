@@ -77,7 +77,7 @@ export default async function NewCategoryPage() {
           />
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
+        <div className="rsp-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
           <Link href="/restaurant/menu" className="btn-secondary">Cancel</Link>
           <button type="submit" className="btn-primary">Create Category</button>
         </div>

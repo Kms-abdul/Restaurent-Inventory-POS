@@ -4954,3 +4954,24 @@ button:disabled:active {
   background: #b45309 !important;
 }
 
+
+/* ─── Back-office responsive helpers (menu, recipes, inventory) ─── */
+@media screen and (max-width: 768px) {
+  .rsp-stack { grid-template-columns: 1fr !important; }
+  .rsp-wrap { flex-wrap: wrap !important; }
+  .rsp-bar { flex-wrap: wrap !important; gap: 0.75rem !important; }
+  .rsp-actions { flex-wrap: wrap !important; gap: 0.5rem !important; width: 100%; }
+  .rsp-actions > a,
+  .rsp-actions > button { flex: 1 1 auto !important; min-width: 0 !important; text-align: center; justify-content: center; }
+  .rsp-minw { min-width: 460px; }
+  .ra-section:has(> .rsp-minw),
+  .ra-section:has(> div > .rsp-minw) { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .rsp-recipe-row { grid-template-columns: 1fr 1fr !important; padding: 0.75rem !important; }
+  .rsp-recipe-row > :first-child { grid-column: 1 / -1; }
+  .rsp-recipe-row > :last-child { grid-column: 1 / -1; justify-self: end; }
+  .ra-section form,
+  form.ra-section { padding: 1.1rem 0.9rem !important; }
+  .ra-page input,
+  .ra-page select,
+  .ra-page textarea { max-width: 100%; font-size: 16px; }
+}

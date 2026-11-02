@@ -84,7 +84,7 @@ export default async function StockInPage({
           </select>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+        <div className="rsp-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
             <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#0f172a' }}>Receiving Branch *</label>
             <select
@@ -126,7 +126,7 @@ export default async function StockInPage({
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+        <div className="rsp-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
             <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#0f172a' }}>Measurement Unit</label>
             <select
@@ -201,7 +201,7 @@ export default async function StockInPage({
           />
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+        <div className="rsp-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
           <Link href="/restaurant/inventory" className="btn-secondary">Cancel</Link>
           <button type="submit" className="btn-primary">Record Stock In</button>
         </div>

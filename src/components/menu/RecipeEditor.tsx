@@ -96,7 +96,7 @@ export default function RecipeEditor({ menuItem, inventoryItems, existingRecipe,
         <input type="hidden" name="menu_item_id" value={menuItem.id} />
         <input type="hidden" name="ingredients_json" value={JSON.stringify(rows)} />
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="rsp-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <h2 style={{ fontSize: '1.15rem', color: '#0f172a', fontWeight: 700, marginBottom: '0.25rem' }}>
               Ingredient Bill of Materials (BOM)
@@ -135,6 +135,7 @@ export default function RecipeEditor({ menuItem, inventoryItems, existingRecipe,
               return (
                 <div
                   key={idx}
+                  className="rsp-recipe-row"
                   style={{
                     display: 'grid',
                     gridTemplateColumns: '2fr 1fr 1fr 2fr auto',
@@ -266,7 +267,7 @@ export default function RecipeEditor({ menuItem, inventoryItems, existingRecipe,
         {/* Live Simulation Simulator */}
         {rows.length > 0 && (
           <div style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: '0.75rem', padding: '1.25rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+            <div className="rsp-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
               <div style={{ fontWeight: 700, color: '#6d28d9', fontSize: '0.9rem' }}>
                 💡 POS Live Stock Deduction Simulation
               </div>
@@ -311,7 +312,7 @@ export default function RecipeEditor({ menuItem, inventoryItems, existingRecipe,
           </div>
         )}
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #e2e8f0', paddingTop: '1rem' }}>
+        <div className="rsp-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #e2e8f0', paddingTop: '1rem' }}>
           <div>
             {existingRecipe && (
               <button
@@ -336,7 +337,7 @@ export default function RecipeEditor({ menuItem, inventoryItems, existingRecipe,
               </button>
             )}
           </div>
-          <div style={{ display: 'flex', gap: '1rem' }}>
+          <div className="rsp-actions" style={{ display: 'flex', gap: '1rem' }}>
             <Link href="/restaurant/menu" className="btn-secondary">Cancel</Link>
             <button type="submit" className="btn-primary" disabled={inventoryItems.length === 0}>
               Save Recipe &amp; Enable Auto-Deduct
