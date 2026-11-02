@@ -4,7 +4,7 @@ import { useState, useCallback, useTransition, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { CartItem } from '@/types/database'
-import { createPOSOrder, createKOTOrder, holdOrder, addItemsToHeldOrder, checkoutHeldOrder, checkoutMultipleOrders, listOrders, updateFulfillmentStatus, voidOrder, replaceTableOrder, transferTableOrder, voidTableOrders } from '@/app/actions/orders'
+import { createPOSOrder, createKOTOrder, holdOrder, addItemsToHeldOrder, checkoutHeldOrder, checkoutMultipleOrders, listOrders, updateFulfillmentStatus, voidOrder, replaceTableOrder, transferTableOrder, voidTableOrders, reduceOrderItemQty } from '@/app/actions/orders'
 import { printJobAction, getDiscoveredPrintersAction, printDirectToThermalPrinter } from '@/app/actions/print-direct'
 import type { ThermalOrderData } from '@/utils/thermal-printer'
 import { printViaBrowser } from '@/utils/browser-print'
@@ -67,7 +67,7 @@ interface PendingOrder {
   table_label?: string  // only for dine-in
   notes?: string
   total_amount: number  // in paise
-  items: CartItem[]
+  items: (CartItem & { orderItemId?: string })[]
 }
 
 interface Props {
@@ -547,6 +547,7 @@ export default function POSTerminal({
             notes: o.notes || undefined,
             total_amount: o.total_amount || 0,
             items: (o.order_items || []).map(oi => ({
+              orderItemId: oi.id,
               menuItemId: oi.menu_item_id ?? '',
               name: oi.item_name_at_sale || oi.item_name || 'Item',
               category: oi.category_at_sale || oi.category || '',
@@ -619,6 +620,31 @@ export default function POSTerminal({
     }
     setCart(Array.from(mergedMap.values()))
     setTableLabel(table)
+  }
+
+  // Reduce one sent item on a dine-in round (e.g. customer cancels 1 of 2)
+  const handleReduceItem = (order: PendingOrder, orderItemId: string, name: string, qty: number) => {
+    const msg = qty > 1
+      ? `Reduce "${name}" from ${qty} to ${qty - 1} on order #${order.order_no}?`
+      : `Remove "${name}" from order #${order.order_no}?`
+    if (!window.confirm(msg)) return
+    startTransition(async () => {
+      try {
+        const res = await reduceOrderItemQty({ orderId: order.id, orderItemId })
+        setPendingOrders(prev => res.voided
+          ? prev.filter(p => p.id !== order.id)
+          : prev.map(p => p.id !== order.id ? p : {
+              ...p,
+              total_amount: res.newTotal,
+              items: p.items
+                .map(i => i.orderItemId !== orderItemId ? i : { ...i, qty: i.qty - 1, lineTotal: (i.qty - 1) * i.unitPrice })
+                .filter(i => i.qty > 0),
+            }))
+        void loadOrders()
+      } catch (err) {
+        alert('Could not reduce item: ' + (err instanceof Error ? err.message : 'Unknown error'))
+      }
+    })
   }
 
   const handleExecuteReplace = (table: string, orders: PendingOrder[]) => {
@@ -1949,6 +1975,17 @@ export default function POSTerminal({
                               <span className="live-item-qty">{it.qty}x</span>
                               <span className="live-item-name">{it.name}</span>
                               <span className="live-item-price">₹{(it.lineTotal / 100).toFixed(0)}</span>
+                              {it.orderItemId && (
+                                <button
+                                  type="button"
+                                  className="live-item-reduce"
+                                  disabled={isPending}
+                                  title={it.qty > 1 ? 'Reduce quantity by 1' : 'Remove this item'}
+                                  onClick={() => handleReduceItem(o, it.orderItemId!, it.name, it.qty)}
+                                >
+                                  {it.qty > 1 ? '−' : '✕'}
+                                </button>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -4881,6 +4918,13 @@ Time: ${mounted ? new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolka
         .btn-clear-order:hover { color: #ef4444; }
 
         /* KOT Tab Styles */
+        .live-item-reduce {
+          margin-left: 0.4rem; flex-shrink: 0; width: 1.6rem; height: 1.6rem; border-radius: 0.35rem;
+          border: 1px solid #fca5a5; background: #fff; color: #b91c1c; font-weight: 800; font-size: 0.9rem;
+          line-height: 1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+        }
+        .live-item-reduce:hover { background: #fee2e2; }
+        .live-item-reduce:disabled { opacity: 0.5; cursor: not-allowed; }
         .kot-tab-layout {
           display: flex;
           justify-content: center;

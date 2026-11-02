@@ -650,6 +650,62 @@ export async function replaceTableOrder(params: {
 }
 
 /**
+ * REDUCE ITEM: Decrease qty of one item on an active (unsettled) order by 1.
+ * Removes the row at qty 0; voids the order if no items remain.
+ */
+export async function reduceOrderItemQty(params: { orderId: string; orderItemId: string }) {
+  const ctx = await getActionContext()
+  if (!ctx) throw new Error('Unauthorized')
+
+  const supabase = ctx.isSuperAdmin ? await createServiceClient() : await createClient()
+
+  const { data: order, error: orderErr } = await supabase
+    .from('orders')
+    .select('id, status')
+    .eq('id', params.orderId)
+    .single()
+  if (orderErr || !order) throw new Error(orderErr?.message || 'Order not found')
+  if (order.status !== 'active') throw new Error('Only open (unsettled) orders can be changed')
+
+  const { data: item, error: itemErr } = await supabase
+    .from('order_items')
+    .select('id, qty, unit_price_at_sale')
+    .eq('id', params.orderItemId)
+    .eq('order_id', params.orderId)
+    .single()
+  if (itemErr || !item) throw new Error(itemErr?.message || 'Item not found')
+
+  if ((item.qty ?? 1) > 1) {
+    const qty = item.qty - 1
+    const { error } = await supabase
+      .from('order_items')
+      .update({ qty, line_total: qty * (item.unit_price_at_sale ?? 0) })
+      .eq('id', item.id)
+    if (error) throw new Error(error.message)
+  } else {
+    const { error } = await supabase.from('order_items').delete().eq('id', item.id)
+    if (error) throw new Error(error.message)
+  }
+
+  const { data: rest, error: restErr } = await supabase
+    .from('order_items')
+    .select('line_total')
+    .eq('order_id', params.orderId)
+  if (restErr) throw new Error(restErr.message)
+
+  if (!rest || rest.length === 0) {
+    await voidOrder(params.orderId, 'All items removed')
+    return { success: true, newTotal: 0, voided: true }
+  }
+
+  const newTotal = rest.reduce((sum, row) => sum + (row.line_total ?? 0), 0)
+  const { error: updErr } = await supabase.from('orders').update({ total_amount: newTotal }).eq('id', params.orderId)
+  if (updErr) throw new Error(updErr.message)
+
+  return { success: true, newTotal, voided: false }
+}
+
+/**
  * CANCEL FROM SALES REPORT: void any non-voided order (active or settled).
  * Restaurant admins, super admins, or staff with pos.void_order only.
  */

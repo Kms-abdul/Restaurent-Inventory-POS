@@ -1,16 +1,16 @@
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
 import { getUserContext, createClient } from '@/utils/supabase/server'
 import OrderRecords, { type ReportOrder } from './OrderRecords'
+import ReportFilters from './ReportFilters'
 
 export const metadata = { title: 'Reports & Analytics' }
 
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ range?: string; branch?: string }>
+  searchParams: Promise<{ range?: string; branch?: string; from?: string; to?: string }>
 }) {
-  const { range = '30d', branch = 'all' } = await searchParams
+  const { range = '30d', branch = 'all', from, to } = await searchParams
   const ctx = await getUserContext()
   if (!ctx?.restaurantId) redirect('/')
 
@@ -23,10 +23,24 @@ export default async function ReportsPage({
     .eq('restaurant_id', ctx.restaurantId)
     .order('name')
 
-  // Calculate date filter
-  let startDate = new Date()
+  // Calculate date filter (calendar days are in IST)
+  const istDay = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
+  const today = istDay(new Date())
+  const isDay = (s?: string) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s)
+  let dayFrom = '', dayTo = ''
   if (range === 'today') {
-    startDate.setHours(0, 0, 0, 0)
+    dayFrom = dayTo = today
+  } else if (range === 'yesterday') {
+    dayFrom = dayTo = istDay(new Date(new Date(`${today}T00:00:00+05:30`).getTime() - 86400000))
+  } else if (range === 'custom' && isDay(from) && isDay(to)) {
+    ;[dayFrom, dayTo] = from! <= to! ? [from!, to!] : [to!, from!]
+  }
+
+  let startDate = new Date()
+  let endDate: Date | null = null
+  if (dayFrom) {
+    startDate = new Date(`${dayFrom}T00:00:00+05:30`)
+    endDate = new Date(`${dayTo}T23:59:59.999+05:30`)
   } else if (range === '7d') {
     startDate.setDate(startDate.getDate() - 7)
   } else if (range === '30d') {
@@ -46,6 +60,10 @@ export default async function ReportsPage({
     .eq('restaurant_id', ctx.restaurantId)
     .gte('created_at', startDate.toISOString())
     .order('created_at', { ascending: false })
+
+  if (endDate) {
+    query = query.lte('created_at', endDate.toISOString())
+  }
 
   if (branch !== 'all') {
     query = query.eq('branch_id', branch)
@@ -98,31 +116,7 @@ export default async function ReportsPage({
 
         {/* Filter Controls */}
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: '0.5rem', padding: '0.25rem', border: '1px solid #cbd5e1' }}>
-            {[
-              { key: 'today', label: 'Today' },
-              { key: '7d',    label: '7 Days' },
-              { key: '30d',   label: '30 Days' },
-              { key: 'all',   label: 'All Time' },
-            ].map(r => (
-              <Link
-                key={r.key}
-                href={`/restaurant/reports?range=${r.key}&branch=${branch}`}
-                style={{
-                  padding: '0.4rem 0.8rem',
-                  borderRadius: '0.375rem',
-                  fontSize: '0.8rem',
-                  textDecoration: 'none',
-                  color: range === r.key ? '#ffffff' : '#475569',
-                  background: range === r.key ? '#2563eb' : 'transparent',
-                  fontWeight: range === r.key ? 700 : 500,
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                {r.label}
-              </Link>
-            ))}
-          </div>
+          <ReportFilters range={range} from={dayFrom} to={dayTo} today={today} branch={branch} />
 
           {(branches ?? []).length > 1 && (
             <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -214,7 +208,7 @@ export default async function ReportsPage({
       </div>
 
       {/* Orders History Table (items, cancel, Excel export) */}
-      <OrderRecords orders={reportOrders} rangeLabel={range} />
+      <OrderRecords orders={reportOrders} rangeLabel={dayFrom ? (dayFrom === dayTo ? dayFrom : `${dayFrom}_to_${dayTo}`) : range} />
     </div>
   )
 }

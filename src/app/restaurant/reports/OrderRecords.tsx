@@ -82,7 +82,7 @@ export default function OrderRecords({ orders, rangeLabel }: { orders: ReportOrd
       </div>
 
       <div className="sa-table-wrap">
-        <table className="sa-table">
+        <table className="sa-table or-table">
           <thead>
             <tr>
               <th>Order #</th>
@@ -103,10 +103,10 @@ export default function OrderRecords({ orders, rangeLabel }: { orders: ReportOrd
             ) : (
               orders.slice(0, MAX_ROWS_ON_SCREEN).map(o => (
                 <tr key={o.id} style={o.status === 'voided' ? { opacity: 0.6 } : undefined}>
-                  <td style={{ fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>#{o.order_no}</td>
-                  <td style={{ color: '#475569', fontSize: '0.85rem' }}>{fmtTime(o.created_at)}</td>
-                  <td style={{ color: '#334155', fontSize: '0.85rem' }}>{o.branchName ?? '—'}</td>
-                  <td style={{ color: '#334155', fontSize: '0.8rem', minWidth: '14rem' }}>
+                  <td data-label="Order #" style={{ fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>#{o.order_no}</td>
+                  <td data-label="Time" style={{ color: '#475569', fontSize: '0.85rem' }}>{fmtTime(o.created_at)}</td>
+                  <td data-label="Branch" style={{ color: '#334155', fontSize: '0.85rem' }}>{o.branchName ?? '—'}</td>
+                  <td data-label="Items" className="or-items" style={{ color: '#334155', fontSize: '0.8rem', minWidth: '14rem' }}>
                     {o.items.length === 0 ? '—' : o.items.map((i, idx) => (
                       <div key={idx}>{i.name} <strong>× {i.qty}</strong></div>
                     ))}
@@ -114,16 +114,16 @@ export default function OrderRecords({ orders, rangeLabel }: { orders: ReportOrd
                       <div style={{ color: '#b91c1c', marginTop: '0.25rem' }}>Reason: {o.void_reason}</div>
                     )}
                   </td>
-                  <td>
+                  <td data-label="Payment">
                     <span style={{ textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: 700, color: '#475569' }}>{o.payment_mode}</span>
                   </td>
-                  <td>
+                  <td data-label="Status">
                     <span className={`badge ${o.status === 'settled' ? 'badge-green' : o.status === 'voided' ? 'badge-red' : 'badge-amber'}`}>
                       {o.status === 'voided' ? 'cancelled' : o.status}
                     </span>
                   </td>
-                  <td style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.95rem' }}>₹{rupees(o.total_amount)}</td>
-                  <td>
+                  <td data-label="Amount" style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.95rem' }}>₹{rupees(o.total_amount)}</td>
+                  <td className="or-actions">
                     {o.status !== 'voided' && (
                       <button
                         type="button"
@@ -146,6 +146,19 @@ export default function OrderRecords({ orders, rangeLabel }: { orders: ReportOrd
           Showing the latest {MAX_ROWS_ON_SCREEN} orders. Download Excel for all {orders.length}.
         </div>
       )}
+      <style>{`
+        @media (max-width: 768px) {
+          .or-table, .or-table tbody, .or-table tr, .or-table td { display: block; width: 100%; }
+          .or-table thead { display: none; }
+          .or-table tr { border-bottom: 1px solid #e2e8f0; padding: 0.75rem 1rem; }
+          .or-table td { display: flex; justify-content: space-between; gap: 1rem; padding: 0.3rem 0 !important; border: none !important; text-align: right; }
+          .or-table td[data-label]::before { content: attr(data-label); color: #64748b; font-size: 0.75rem; font-weight: 600; text-align: left; flex-shrink: 0; }
+          .or-table td.or-items { min-width: 0 !important; flex-direction: column; text-align: left; gap: 0.15rem; }
+          .or-table td.or-actions { justify-content: flex-end; }
+          .or-table td.or-actions:empty { display: none; }
+          .or-table td.sa-empty { justify-content: center; text-align: center; }
+        }
+      `}</style>
     </div>
   )
 }
