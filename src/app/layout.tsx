@@ -17,13 +17,13 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: 'Kitchora - Restaurant Operations Platform',
+  title: 'Kitchops - Restaurant Operations Platform',
   description: 'Multi-tenant restaurant management and point-of-sale platform - Inventory, POS, Recipes & More',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Kitchora',
+    title: 'Kitchops',
   },
   formatDetection: {
     telephone: false,

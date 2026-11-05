@@ -1,6 +1,6 @@
 {
-  "name": "Kitchora - Restaurant Operations Platform",
-  "short_name": "Kitchora",
+  "name": "Kitchops - Restaurant Operations Platform",
+  "short_name": "Kitchops",
   "description": "Multi-tenant restaurant management and point-of-sale platform - Inventory, POS, Recipes & More",
   "start_url": "/",
   "display": "standalone",

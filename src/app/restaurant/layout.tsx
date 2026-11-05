@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getUserContext } from '@/utils/supabase/server'
 import RestaurantAdminNav from '@/components/restaurant/RestaurantAdminNav'
+import KmsOpsBadge from '@/components/brand/KmsOpsBadge'
 
 export default async function RestaurantAdminLayout({ children }: { children: React.ReactNode }) {
   // getUserContext is needed here for the full profile + restaurant object used in the nav
@@ -19,7 +20,10 @@ export default async function RestaurantAdminLayout({ children }: { children: Re
         profile={ctx.profile}
         restaurant={ctx.restaurant!}
       />
-      <main className="ra-main">{children}</main>
+      <main className="ra-main">
+        {children}
+        <KmsOpsBadge />
+      </main>
     </div>
   )
 }

@@ -35,10 +35,10 @@ export default function LoginPage() {
         {/* Main Header Logo */}
         <div className="login-centered-logo">
           <Image
-            src="/Kitchoralogo.png"
-            alt="Kitchora Logo"
-            width={280}
-            height={280}
+            src="/Kitchopslogo.webp"
+            alt="Kitchops Logo"
+            width={2000}
+            height={667}
             className="login-top-logo"
             priority
           />
@@ -98,6 +98,13 @@ export default function LoginPage() {
               )}
             </button>
           </form>
+
+          <iframe
+            className="login-badge"
+            src="https://kms-ops.vercel.app/ads?source=kitchops&layout=badge"
+            title="A KMS Ops Product"
+            loading="lazy"
+          />
 
           {/* Multi-branch POS feature callout text (no box background) */}
           <p className="login-feature-text">

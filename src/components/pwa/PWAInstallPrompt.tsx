@@ -211,19 +211,20 @@ export default function PWAInstallPrompt() {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
               <img
-                src="/Kitchoralogo.png"
-                alt="Kitchora"
+                src="/Kitchopslogo.webp"
+                alt="Kitchops"
                 style={{
-                  width: '56px',
-                  height: '56px',
-                  borderRadius: '14px',
-                  objectFit: 'cover',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                  width: '140px',
+                  height: 'auto',
+                  borderRadius: '8px',
+                  objectFit: 'contain',
+                  background: '#ffffff',
+                  padding: '4px',
                 }}
               />
               <div>
                 <h3 style={{ color: '#fff', fontSize: '18px', fontWeight: 700, margin: '0 0 4px 0' }}>
-                  Install Kitchora
+                  Install Kitchops
                 </h3>
                 <p style={{ color: '#9ca3af', fontSize: '13px', margin: 0, lineHeight: '1.4' }}>
                   Get the full app experience on your device
