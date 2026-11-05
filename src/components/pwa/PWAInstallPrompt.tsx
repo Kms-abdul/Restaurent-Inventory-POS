@@ -211,15 +211,14 @@ export default function PWAInstallPrompt() {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
               <img
-                src="/Kitchopslogo.webp"
+                src="/Kitchopsicon.png"
                 alt="Kitchops"
                 style={{
-                  width: '140px',
-                  height: 'auto',
-                  borderRadius: '8px',
-                  objectFit: 'contain',
+                  width: '56px',
+                  height: '56px',
+                  borderRadius: '14px',
+                  objectFit: 'cover',
                   background: '#ffffff',
-                  padding: '4px',
                 }}
               />
               <div>
