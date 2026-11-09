@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient, createServiceClient, getActionContext, getUserContext } from '@/utils/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
 import type { CartItem, PaymentMode } from '@/types/database'
 
@@ -675,17 +676,24 @@ export async function reduceOrderItemQty(params: { orderId: string; orderItemId:
     .single()
   if (itemErr || !item) throw new Error(itemErr?.message || 'Item not found')
 
-  if ((item.qty ?? 1) > 1) {
-    const qty = item.qty - 1
-    const { error } = await supabase
-      .from('order_items')
-      .update({ qty, line_total: qty * (item.unit_price_at_sale ?? 0) })
-      .eq('id', item.id)
-    if (error) throw new Error(error.message)
-  } else {
-    const { error } = await supabase.from('order_items').delete().eq('id', item.id)
-    if (error) throw new Error(error.message)
-  }
+  // order_items has no UPDATE/DELETE RLS policy, so RLS would silently change 0 rows.
+  // The order and item were read above through RLS, which confirms branch access.
+  // A plain client is required: createServiceClient() forwards the user's session cookie, so RLS still applies.
+  const admin = createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } }
+  )
+  const { data: changed, error: changeErr } = (item.qty ?? 1) > 1
+    ? await admin
+        .from('order_items')
+        .update({ qty: item.qty - 1, line_total: (item.qty - 1) * (item.unit_price_at_sale ?? 0) })
+        .eq('id', item.id)
+        .eq('qty', item.qty)
+        .select('id')
+    : await admin.from('order_items').delete().eq('id', item.id).select('id')
+  if (changeErr) throw new Error(changeErr.message)
+  if (!changed || changed.length === 0) throw new Error('Item was already changed. Please refresh and try again.')
 
   const { data: rest, error: restErr } = await supabase
     .from('order_items')

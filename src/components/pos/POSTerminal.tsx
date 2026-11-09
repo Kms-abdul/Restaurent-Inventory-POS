@@ -2040,15 +2040,6 @@ export default function POSTerminal({
                         <button
                           type="button"
                           className="btn-quick-tbl-action"
-                          disabled={cart.length === 0}
-                          onClick={() => setReplaceModal({ table: t, orders })}
-                          title="Replace table order with cart items"
-                        >
-                          🔄 Replace
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-quick-tbl-action"
                           onClick={() => setTransferModal({ fromTable: t, orders })}
                           title="Transfer order to another table"
                         >
