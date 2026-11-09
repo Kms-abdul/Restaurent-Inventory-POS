@@ -85,7 +85,7 @@ interface Props {
   isAdmin: boolean
 }
 
-type PaymentMode = 'cash' | 'card' | 'upi' | 'split'
+type PaymentMode = 'cash' | 'card' | 'upi' | 'split' | 'due' | 'swiggy_zomato'
 type ActiveTab = 'order' | 'tables' | 'kot' | 'kds' | 'printer'
 
 const POS_TABS: { id: ActiveTab; label: string; icon: string }[] = [
@@ -373,9 +373,9 @@ export default function POSTerminal({
     return list
   }, [DEFAULT_TABLES, pendingOrders])
   // Whether the pending orders panel is expanded
-  const [showPendingPanel, setShowPendingPanel] = useState<boolean>(false)
   // Status feedback for the 3 action buttons
   const [kotStatus, setKotStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle')
+  const [noKotStatus, setNoKotStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle')
   const [dineInStatus, setDineInStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle')
   const [checkoutStatus, setCheckoutStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle')
   // Checkout confirmation dialog: single takeaway order or a full dine-in table
@@ -940,7 +940,6 @@ export default function POSTerminal({
           items: [...cart],
         }
         setPendingOrders(prev => [newPending, ...prev])
-        setShowPendingPanel(true)
 
         setLastOrder({
           order_no: result.order_no,
@@ -974,14 +973,16 @@ export default function POSTerminal({
   // Creates an order for a table, prints KOT (chef cooks now), and adds it to
   // the Pending Orders panel grouped by table. Same table can have multiple
   // rounds; all are collected in one payment at checkout.
-  const handleDineIn = () => {
+  // noKot: for last-minute items (e.g. a water bottle) that the kitchen doesn't need to see
+  const handleDineIn = (noKot = false) => {
     if (cart.length === 0) return
     const label = tableLabel.trim()
     if (!label) {
       alert('Please enter a table number for Dine-In orders (e.g. Table 1 or T1).')
       return
     }
-    setDineInStatus('pending')
+    const setStatus = noKot ? setNoKotStatus : setDineInStatus
+    setStatus('pending')
     startTransition(async () => {
       try {
         // Count existing rounds for this table
@@ -1021,7 +1022,11 @@ export default function POSTerminal({
           paymentMode: 'none',
           items: cart.map(i => ({ name: i.name, quantity: i.qty, price: i.unitPrice / 100, lineTotal: i.lineTotal / 100 })),
         }
-        triggerPrints(printData, 'KOT')
+        if (noKot) {
+          await updateFulfillmentStatus(result.order_id, 'served').catch(e => console.warn('Could not hide from kitchen display:', e))
+        } else {
+          triggerPrints(printData, 'KOT')
+        }
 
         // Add to Pending Orders panel under the table group
         const newPending: PendingOrder = {
@@ -1035,7 +1040,6 @@ export default function POSTerminal({
           items: [...cart],
         }
         setPendingOrders(prev => [newPending, ...prev])
-        setShowPendingPanel(true)
 
         setNextOrderNo(result.order_no + 1)
         setCart([])
@@ -1043,15 +1047,16 @@ export default function POSTerminal({
         setOrderNotes('')
         // Release the table so the next order (takeaway or another table) isn't
         // added to it; pick the table again (or "Add" on Live Tables) for its next round
-        setTableLabel('')
-        setDineInStatus('success')
+        // (a no-KOT save keeps it selected, as checkout usually comes next)
+        if (!noKot) setTableLabel('')
+        setStatus('success')
         setMobileOrderView('menu')
-        setTimeout(() => setDineInStatus('idle'), 3000)
+        setTimeout(() => setStatus('idle'), 3000)
         void loadOrders()
       } catch (err: unknown) {
-        setDineInStatus('error')
+        setStatus('error')
         alert('Dine-In failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
-        setTimeout(() => setDineInStatus('idle'), 3000)
+        setTimeout(() => setStatus('idle'), 3000)
       }
     })
   }
@@ -1334,10 +1339,12 @@ export default function POSTerminal({
 
   // ─── CHECKOUT from current cart (no prior KOT/HOLD) ──────────────────────
   // Directly creates + settles an order in one step (Takeaway direct or instant checkout).
-  const handleCheckoutFromCart = () => {
+  const handleCheckoutFromCart = (mode: PaymentMode = paymentMode, noKot = false) => {
     if (cart.length === 0) return
+    const isDelivery = mode === 'swiggy_zomato'
+    const receiptMode = isDelivery ? 'Swiggy/Zomato' : mode
 
-    if (finalTotalRupees > 0 && paymentMode === 'split') {
+    if (finalTotalRupees > 0 && mode === 'split') {
       const split = getSplitDetailsPaise(finalTotalRupees)
       if (!split.isBalanced) {
         alert(
@@ -1347,7 +1354,8 @@ export default function POSTerminal({
       }
     }
 
-    setCheckoutStatus('pending')
+    const setStatus = noKot ? setNoKotStatus : setCheckoutStatus
+    setStatus('pending')
     startTransition(async () => {
       try {
         const orderTime = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -1359,24 +1367,24 @@ export default function POSTerminal({
           combinedNotes = combinedNotes ? `${combinedNotes} [${discTag}]` : `[${discTag}]`
         }
 
-        const effectiveTable = tableLabel.trim() || undefined
+        const effectiveTable = isDelivery ? undefined : tableLabel.trim() || undefined
         if (effectiveTable && !combinedNotes.includes(effectiveTable)) {
           combinedNotes = `[${effectiveTable}]${combinedNotes ? ` ${combinedNotes}` : ''}`
         }
 
-        const splitPaise = (finalTotalRupees > 0 && paymentMode === 'split') ? {
+        const splitPaise = (finalTotalRupees > 0 && mode === 'split') ? {
           cash: Math.round((parseFloat(splitCash) || 0) * 100),
           upi: Math.round((parseFloat(splitUpi) || 0) * 100),
           card: Math.round((parseFloat(splitCard) || 0) * 100),
         } : undefined
 
-        const splitRupees = (finalTotalRupees > 0 && paymentMode === 'split') ? {
+        const splitRupees = (finalTotalRupees > 0 && mode === 'split') ? {
           cash: (parseFloat(splitCash) || 0),
           upi: (parseFloat(splitUpi) || 0),
           card: (parseFloat(splitCard) || 0),
         } : undefined
 
-        if (paymentMode === 'split' && splitRupees) {
+        if (mode === 'split' && splitRupees) {
           const parts: string[] = []
           if (splitRupees.cash > 0) parts.push(`Cash ₹${splitRupees.cash.toFixed(2)}`)
           if (splitRupees.upi > 0) parts.push(`UPI ₹${splitRupees.upi.toFixed(2)}`)
@@ -1389,12 +1397,12 @@ export default function POSTerminal({
           branchId,
           restaurantId,
           tableNumber: effectiveTable,
-          paymentMode: finalTotalRupees === 0 ? 'cash' : paymentMode,
+          paymentMode: finalTotalRupees === 0 ? 'cash' : mode,
           totalAmount: finalTotalPaise,
           discountAmount: discountPaise,
           notes: combinedNotes || undefined,
           items: cart,
-          enableKotPrint: printerSettings.enableKotPrint,
+          enableKotPrint: !noKot && printerSettings.enableKotPrint,
           splitDetails: splitPaise,
         })
 
@@ -1407,7 +1415,7 @@ export default function POSTerminal({
           total: finalTotalRupees,
           items: [...cart],
           time: orderTime,
-          payment_mode: finalTotalRupees === 0 ? 'Complimentary' : paymentMode,
+          payment_mode: finalTotalRupees === 0 ? 'Complimentary' : receiptMode,
           notes: combinedNotes,
         }
 
@@ -1432,7 +1440,7 @@ export default function POSTerminal({
           subtotal: subtotalRupees,
           discount: discountRupees,
           total: finalTotalRupees,
-          paymentMode: finalTotalRupees === 0 ? 'Complimentary' : paymentMode,
+          paymentMode: finalTotalRupees === 0 ? 'Complimentary' : receiptMode,
           splitDetails: splitRupees,
           items: createdOrder.items.map(i => ({
             name: i.name,
@@ -1441,19 +1449,26 @@ export default function POSTerminal({
             lineTotal: i.lineTotal ? i.lineTotal / 100 : undefined,
           })),
         }
-        triggerPrints(printData, 'BOTH')
+        if (noKot) await updateFulfillmentStatus(result.order_id, 'served').catch(e => console.warn('Could not hide from kitchen display:', e))
+        triggerPrints(printData, noKot ? 'RECEIPT' : 'BOTH')
 
-        setCheckoutStatus('success')
+        setStatus('success')
         setBillingStatus('success')
         setMobileOrderView('menu')
-        setTimeout(() => { setCheckoutStatus('idle'); setBillingStatus(null) }, 3000)
+        setTimeout(() => { setStatus('idle'); setBillingStatus(null) }, 3000)
         void loadOrders()
       } catch (err: unknown) {
-        setCheckoutStatus('error')
+        setStatus('error')
         alert('Checkout failed: ' + (err instanceof Error ? err.message : 'Unknown error'))
-        setTimeout(() => setCheckoutStatus('idle'), 3000)
+        setTimeout(() => setStatus('idle'), 3000)
       }
     })
+  }
+
+  // Save without a KOT: onto the selected table's bill, or straight to sales when no table is selected
+  const handleSaveNoKot = () => {
+    if (tableLabel.trim()) handleDineIn(true)
+    else handleCheckoutFromCart(paymentMode, true)
   }
 
   // ─── CHECKOUT pending orders (single takeaway OR full dine-in table) ───────
@@ -1552,7 +1567,7 @@ export default function POSTerminal({
   }
 
   // Legacy alias
-  const handleCompleteBilling = handleCheckoutFromCart
+  const handleCompleteBilling = () => handleCheckoutFromCart()
 
   // ─── Derived: group pending orders for the panel ──────────────────────────
   const takeawayPending = useMemo(
@@ -1572,7 +1587,6 @@ export default function POSTerminal({
     return groups
   }, [pendingOrders])
 
-  const dineInTableKeys = useMemo(() => Object.keys(dineInByTable), [dineInByTable])
 
   const hasPending = pendingOrders.length > 0
 
@@ -2494,10 +2508,10 @@ export default function POSTerminal({
                             </button>
                             <button
                               type="button"
-                              onClick={() => setPaymentMode('card')}
-                              className={`payment-btn ${paymentMode === 'card' ? 'active' : ''}`}
+                              onClick={() => setPaymentMode('due')}
+                              className={`payment-btn ${paymentMode === 'due' ? 'active' : ''}`}
                             >
-                              💳 Card
+                              🕒 Due
                             </button>
                             <button
                               type="button"
@@ -2592,11 +2606,11 @@ export default function POSTerminal({
                       )}
 
                       {/* ── 2 Action Buttons: Dine-In & Checkout ── */}
-                      <div className="action-2btn-row">
+                      <div className="action-2btn-row action-3btn">
                         <button
                           type="button"
                           disabled={cart.length === 0 || isPending}
-                          onClick={handleDineIn}
+                          onClick={() => handleDineIn()}
                           className={`btn-action-kot ${dineInStatus === 'success' ? 'btn-action-success' : ''}`}
                           title="Send items to kitchen & keep table occupied"
                         >
@@ -2614,72 +2628,32 @@ export default function POSTerminal({
                           {checkoutStatus === 'pending' ? '⏳' : checkoutStatus === 'success' ? '✅' : '💳'}
                           <span>{checkoutStatus === 'success' ? 'Done!' : (cart.length > 0 ? 'Checkout' : `Checkout ${tableLabel || ''}`)}</span>
                         </button>
+
+                        <button
+                          type="button"
+                          disabled={cart.length === 0 || isPending}
+                          onClick={() => handleCheckoutFromCart('swiggy_zomato')}
+                          className="btn-action-swiggy"
+                          title="Settle as a Swiggy/Zomato order"
+                        >
+                          🛵
+                          <span>Swiggy/Zomato</span>
+                        </button>
                       </div>
                     </div>
 
+                    <button
+                      type="button"
+                      disabled={cart.length === 0 || isPending}
+                      onClick={handleSaveNoKot}
+                      className="btn-save-no-kot"
+                      title="Save without a KOT: adds to the selected table, or records a direct sale if no table is selected"
+                    >
+                      {noKotStatus === 'pending' ? '⏳ Saving…' : noKotStatus === 'success' ? '✅ Saved' : `💾 Save (No KOT)${tableLabel ? ` – ${tableLabel}` : ''}`}
+                    </button>
+
                     <button type="button" onClick={clearCart} className="btn-clear-order">Clear order</button>
 
-                    {/* ── Active Tables Panel ── */}
-                    {dineInTableKeys.length > 0 && (
-                      <div className="hold-tray-section">
-                        <button
-                          type="button"
-                          className="hold-tray-toggle"
-                          onClick={() => setShowPendingPanel(p => !p)}
-                        >
-                          <span>🍽️ Active Tables</span>
-                          <span className="hold-tray-count">{dineInTableKeys.length}</span>
-                          <span style={{ marginLeft: 'auto', fontSize: '0.75rem' }}>{showPendingPanel ? '▲' : '▼'}</span>
-                        </button>
-
-                        {showPendingPanel && (
-                          <div className="hold-tray-list">
-                            {Object.entries(dineInByTable).map(([tbl, orders]) => {
-                              const tblTotal = orders.reduce((s, o) => s + o.total_amount, 0)
-                              return (
-                                <div key={tbl} className="held-order-card held-order-card-table">
-                                  <div className="held-order-header">
-                                    <span className="held-order-num">🪑 Table {tbl}</span>
-                                    <span className="held-order-table">{orders.length} round{orders.length > 1 ? 's' : ''}</span>
-                                    <span className="held-order-time">
-                                      {new Date(orders[0].created_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })}
-                                    </span>
-                                  </div>
-                                  <div className="held-order-items-preview">
-                                    {orders.flatMap(o => o.items).slice(0, 3).map((it, i) => (
-                                      <span key={i} className="held-item-chip">{it.name} ×{it.qty}</span>
-                                    ))}
-                                    {orders.flatMap(o => o.items).length > 3 && (
-                                      <span className="held-item-chip">+{orders.flatMap(o => o.items).length - 3} more</span>
-                                    )}
-                                  </div>
-                                  <div className="held-order-total">Total: ₹{(tblTotal / 100).toFixed(2)}</div>
-                                  <div className="held-order-actions" style={{ display: 'flex', gap: '0.35rem' }}>
-                                    <button
-                                      type="button"
-                                      className="btn-quick-tbl-action"
-                                      style={{ flex: 1 }}
-                                      onClick={() => setTableLabel(tbl)}
-                                    >
-                                      Select
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="btn-held-checkout"
-                                      style={{ flex: 2 }}
-                                      onClick={() => setCheckoutTarget({ type: 'table', orders, tableLabel: tbl, totalAmount: tblTotal })}
-                                      disabled={isPending}
-                                    >
-                                      💳 Settle &amp; Checkout
-                                    </button>
-                                  </div>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>
@@ -3025,10 +2999,10 @@ export default function POSTerminal({
                             </button>
                             <button
                               type="button"
-                              onClick={() => setPaymentMode('card')}
-                              className={`payment-btn ${paymentMode === 'card' ? 'active' : ''}`}
+                              onClick={() => setPaymentMode('due')}
+                              className={`payment-btn ${paymentMode === 'due' ? 'active' : ''}`}
                             >
-                              💳 Card
+                              🕒 Due
                             </button>
                             <button
                               type="button"
@@ -3111,11 +3085,11 @@ export default function POSTerminal({
                         )}
 
                         {/* ── 2 Action Buttons: Dine-In & Checkout (Mobile) ── */}
-                        <div className="action-2btn-row">
+                        <div className="action-2btn-row action-3btn">
                           <button
                             type="button"
                             disabled={cart.length === 0 || isPending}
-                            onClick={handleDineIn}
+                            onClick={() => handleDineIn()}
                             className={`btn-action-kot ${dineInStatus === 'success' ? 'btn-action-success' : ''}`}
                             title="Send to kitchen & keep table occupied"
                           >
@@ -3133,72 +3107,32 @@ export default function POSTerminal({
                             {checkoutStatus === 'pending' ? '⏳' : checkoutStatus === 'success' ? '✅' : '💳'}
                             <span>{checkoutStatus === 'success' ? 'Done!' : (cart.length > 0 ? 'Checkout' : `Checkout ${tableLabel || ''}`)}</span>
                           </button>
+
+                          <button
+                            type="button"
+                            disabled={cart.length === 0 || isPending}
+                            onClick={() => handleCheckoutFromCart('swiggy_zomato')}
+                            className="btn-action-swiggy"
+                            title="Settle as a Swiggy/Zomato order"
+                          >
+                            🛵
+                            <span>Swiggy/Zomato</span>
+                          </button>
                         </div>
                       </div>
 
+                      <button
+                        type="button"
+                        disabled={cart.length === 0 || isPending}
+                        onClick={handleSaveNoKot}
+                        className="btn-save-no-kot"
+                        title="Save without a KOT: adds to the selected table, or records a direct sale if no table is selected"
+                      >
+                        {noKotStatus === 'pending' ? '⏳ Saving…' : noKotStatus === 'success' ? '✅ Saved' : `💾 Save (No KOT)${tableLabel ? ` – ${tableLabel}` : ''}`}
+                      </button>
+
                       <button type="button" onClick={clearCart} className="btn-clear-order">Clear order</button>
 
-                      {/* ── Active Tables Panel (Mobile) ── */}
-                      {dineInTableKeys.length > 0 && (
-                        <div className="hold-tray-section" style={{ marginTop: '0.5rem' }}>
-                          <button
-                            type="button"
-                            className="hold-tray-toggle"
-                            onClick={() => setShowPendingPanel(p => !p)}
-                          >
-                            <span>🍽️ Active Tables</span>
-                            <span className="hold-tray-count">{dineInTableKeys.length}</span>
-                            <span style={{ marginLeft: 'auto', fontSize: '0.75rem' }}>{showPendingPanel ? '▲' : '▼'}</span>
-                          </button>
-
-                          {showPendingPanel && (
-                            <div className="hold-tray-list">
-                              {Object.entries(dineInByTable).map(([tbl, orders]) => {
-                                const tblTotal = orders.reduce((s, o) => s + o.total_amount, 0)
-                                return (
-                                  <div key={tbl} className="held-order-card held-order-card-table">
-                                    <div className="held-order-header">
-                                      <span className="held-order-num">🪑 Table {tbl}</span>
-                                      <span className="held-order-table">{orders.length} round{orders.length > 1 ? 's' : ''}</span>
-                                      <span className="held-order-time">
-                                        {new Date(orders[0].created_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })}
-                                      </span>
-                                    </div>
-                                    <div className="held-order-items-preview">
-                                      {orders.flatMap(o => o.items).slice(0, 3).map((it, i) => (
-                                        <span key={i} className="held-item-chip">{it.name} ×{it.qty}</span>
-                                      ))}
-                                      {orders.flatMap(o => o.items).length > 3 && (
-                                        <span className="held-item-chip">+{orders.flatMap(o => o.items).length - 3}</span>
-                                      )}
-                                    </div>
-                                    <div className="held-order-total">Total: ₹{(tblTotal / 100).toFixed(2)}</div>
-                                    <div className="held-order-actions" style={{ display: 'flex', gap: '0.35rem' }}>
-                                      <button
-                                        type="button"
-                                        className="btn-quick-tbl-action"
-                                        style={{ flex: 1 }}
-                                        onClick={() => setTableLabel(tbl)}
-                                      >
-                                        Select
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="btn-held-checkout"
-                                        style={{ flex: 2 }}
-                                        onClick={() => setCheckoutTarget({ type: 'table', orders, tableLabel: tbl, totalAmount: tblTotal })}
-                                        disabled={isPending}
-                                      >
-                                        💳 Settle &amp; Checkout
-                                      </button>
-                                    </div>
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>
@@ -3368,7 +3302,7 @@ export default function POSTerminal({
               </div>
               <div className="payment-buttons-grid" style={{ margin: '0.75rem 0' }}>
                 <button type="button" onClick={() => setPaymentMode('cash')} className={`payment-btn ${paymentMode === 'cash' ? 'active' : ''}`}>💵 Cash</button>
-                <button type="button" onClick={() => setPaymentMode('card')} className={`payment-btn ${paymentMode === 'card' ? 'active' : ''}`}>💳 Card</button>
+                <button type="button" onClick={() => setPaymentMode('due')} className={`payment-btn ${paymentMode === 'due' ? 'active' : ''}`}>🕒 Due</button>
                 <button type="button" onClick={() => setPaymentMode('upi')} className={`payment-btn ${paymentMode === 'upi' ? 'active' : ''}`}>📱 UPI</button>
                 <button type="button" onClick={() => handleSelectSplit(checkoutTarget.totalAmount / 100)} className={`payment-btn ${paymentMode === 'split' ? 'active-split' : ''}`}>🔀 Split</button>
               </div>

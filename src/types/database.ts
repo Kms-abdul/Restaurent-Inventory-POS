@@ -177,7 +177,7 @@ export interface RecipeItem {
 }
 
 export type OrderStatus = 'active' | 'settled' | 'voided'
-export type PaymentMode = 'cash' | 'card' | 'upi' | 'split' | 'none'
+export type PaymentMode = 'cash' | 'card' | 'upi' | 'split' | 'none' | 'due' | 'swiggy_zomato'
 export type FulfillmentStatus = 'pending' | 'cooking' | 'ready' | 'served'
 export type OrderSource = 'pos' | 'qr' | 'app'
 

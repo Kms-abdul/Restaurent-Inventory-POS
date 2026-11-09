@@ -23,6 +23,7 @@ const MANAGEMENT_ITEMS = [
   { href: '/restaurant/roles',              label: 'Roles' },
   { href: '/restaurant/reports',            label: 'Sales Reports' },
   { href: '/restaurant/reports/collection', label: 'Collection Report' },
+  { href: '/restaurant/reports/due',        label: 'Due Bills' },
   { href: '/restaurant/settings',           label: 'Settings' },
 ]
 

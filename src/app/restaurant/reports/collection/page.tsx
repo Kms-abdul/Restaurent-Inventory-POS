@@ -179,8 +179,9 @@ export default async function CollectionReportPage({
 
   orders.forEach((o: any) => {
     const amount = (o.total_amount || 0) / 100
-    grandTotal += amount
     const mode = (o.payment_mode || 'cash').toLowerCase()
+    if (mode === 'due') return // not collected yet
+    grandTotal += amount
 
     if (mode === 'cash') totalCash += amount
     else if (mode === 'upi') totalUpi += amount

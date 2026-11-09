@@ -4999,3 +4999,46 @@ button:disabled:active {
   margin: 1.5rem auto 0.5rem;
   padding: 0 1rem;
 }
+
+/* ─── POS action row: Dine-In, Checkout, Swiggy/Zomato ─── */
+.action-2btn-row.action-3btn {
+  grid-template-columns: 1fr 1fr 1fr !important;
+}
+.action-2btn-row .btn-action-swiggy {
+  height: 44px;
+  border-radius: 0.6rem;
+  background: linear-gradient(135deg, #f97316, #ea580c);
+  color: #ffffff;
+  border: none;
+  font-weight: 800;
+  font-size: 0.72rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  white-space: nowrap;
+  padding: 0 0.15rem;
+  cursor: pointer;
+  font-family: 'Outfit', 'Inter', sans-serif;
+  min-width: 0;
+}
+.action-2btn-row .btn-action-swiggy:hover:not(:disabled) { opacity: 0.92; }
+.action-2btn-row .btn-action-swiggy:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ─── POS: small "Save to Table (No KOT)" button ─── */
+.btn-save-no-kot {
+  display: block;
+  width: 100%;
+  margin-top: 0.4rem;
+  padding: 0.35rem 0.5rem;
+  background: #ffffff;
+  color: #4338ca;
+  border: 1px dashed #a5b4fc;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn-save-no-kot:hover:not(:disabled) { background: #eef2ff; }
+.btn-save-no-kot:disabled { opacity: 0.45; cursor: not-allowed; }

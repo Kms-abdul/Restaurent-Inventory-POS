@@ -185,6 +185,8 @@ export default async function ReportsPage({
             { key: 'cash', label: 'Cash Payments', icon: '💵', color: '#16a34a' },
             { key: 'upi',  label: 'UPI / QR',       icon: '📱', color: '#4f46e5' },
             { key: 'card', label: 'Cards',          icon: '💳', color: '#d97706' },
+            { key: 'due',  label: 'Due (Pay Later)', icon: '🕒', color: '#dc2626' },
+            { key: 'swiggy_zomato', label: 'Swiggy / Zomato', icon: '🛵', color: '#ea580c' },
           ].map(m => {
             const data = paymentBreakdown[m.key] || { count: 0, total: 0 }
             const pct = totalRevenueRupees > 0 ? ((data.total / totalRevenueRupees) * 100).toFixed(1) : '0'

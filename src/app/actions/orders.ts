@@ -714,6 +714,59 @@ export async function reduceOrderItemQty(params: { orderId: string; orderItemId:
 }
 
 /**
+ * MARK DUE PAID: Record that a "due" bill has now been paid (restaurant admins only).
+ * The order is matched on restaurant and on still being due, so it can only be paid once.
+ */
+export async function markDueOrderPaid(orderId: string, mode: 'cash' | 'upi' | 'card') {
+  const ctx = await getUserContext()
+  if (!ctx) throw new Error('Unauthorized')
+  if (!ctx.restaurantId || ctx.branchId) throw new Error('You do not have permission to update due bills')
+  if (!['cash', 'upi', 'card'].includes(mode)) throw new Error('Invalid payment mode')
+
+  // Plain admin client: payments has no UPDATE RLS policy, so RLS would silently change 0 rows.
+  const admin = createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } }
+  )
+
+  const { data: order, error: fetchErr } = await admin
+    .from('orders')
+    .select('notes')
+    .eq('id', orderId)
+    .eq('restaurant_id', ctx.restaurantId)
+    .eq('status', 'settled')
+    .eq('payment_mode', 'due')
+    .maybeSingle()
+  if (fetchErr) throw new Error(fetchErr.message)
+  if (!order) throw new Error('This bill is no longer due. Please refresh.')
+
+  const paidOn = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' })
+  const paidTag = `[Due paid: ${mode.toUpperCase()}, ${paidOn}]`
+
+  const { data: updated, error: updateErr } = await admin
+    .from('orders')
+    .update({ payment_mode: mode, notes: order.notes ? `${order.notes} ${paidTag}` : paidTag })
+    .eq('id', orderId)
+    .eq('payment_mode', 'due')
+    .select('id')
+  if (updateErr) throw new Error(updateErr.message)
+  if (!updated || updated.length === 0) throw new Error('This bill is no longer due. Please refresh.')
+
+  const { error: paymentErr } = await admin
+    .from('payments')
+    .update({ payment_mode: mode })
+    .eq('order_id', orderId)
+    .eq('payment_mode', 'due')
+  if (paymentErr) throw new Error(paymentErr.message)
+
+  revalidatePath('/restaurant/reports')
+  revalidatePath('/restaurant/reports/due')
+  revalidatePath('/restaurant/reports/collection')
+  return { success: true }
+}
+
+/**
  * CANCEL FROM SALES REPORT: void any non-voided order (active or settled).
  * Restaurant admins, super admins, or staff with pos.void_order only.
  */
