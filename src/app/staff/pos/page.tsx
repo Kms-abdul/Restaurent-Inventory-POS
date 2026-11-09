@@ -198,6 +198,7 @@ export default async function POSPage({
       roleName={roleName}
       branchName={branchName}
       restaurantName={restaurantName}
+      dayEndHour={ctx.restaurant?.day_end_hour ?? 0}
       branches={branchesData}
       categories={categories ?? []}
       menuItems={filteredMenuItems}

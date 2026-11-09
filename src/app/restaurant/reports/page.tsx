@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getUserContext, createClient } from '@/utils/supabase/server'
 import OrderRecords, { type ReportOrder } from './OrderRecords'
 import ReportFilters from './ReportFilters'
+import { businessDayEnd, businessDayStart, businessToday, isDayString, shiftDay } from '@/utils/business-day'
 
 export const metadata = { title: 'Reports & Analytics' }
 
@@ -23,24 +24,23 @@ export default async function ReportsPage({
     .eq('restaurant_id', ctx.restaurantId)
     .order('name')
 
-  // Calculate date filter (calendar days are in IST)
-  const istDay = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
-  const today = istDay(new Date())
-  const isDay = (s?: string) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s)
+  // Calculate date filter (business days, in IST)
+  const dayEndHour = ctx.restaurant?.day_end_hour ?? 0
+  const today = businessToday(dayEndHour)
   let dayFrom = '', dayTo = ''
   if (range === 'today') {
     dayFrom = dayTo = today
   } else if (range === 'yesterday') {
-    dayFrom = dayTo = istDay(new Date(new Date(`${today}T00:00:00+05:30`).getTime() - 86400000))
-  } else if (range === 'custom' && isDay(from) && isDay(to)) {
-    ;[dayFrom, dayTo] = from! <= to! ? [from!, to!] : [to!, from!]
+    dayFrom = dayTo = shiftDay(today, -1)
+  } else if (range === 'custom' && isDayString(from) && isDayString(to)) {
+    ;[dayFrom, dayTo] = from <= to ? [from, to] : [to, from]
   }
 
   let startDate = new Date()
   let endDate: Date | null = null
   if (dayFrom) {
-    startDate = new Date(`${dayFrom}T00:00:00+05:30`)
-    endDate = new Date(`${dayTo}T23:59:59.999+05:30`)
+    startDate = businessDayStart(dayFrom, dayEndHour)
+    endDate = businessDayEnd(dayTo, dayEndHour)
   } else if (range === '7d') {
     startDate.setDate(startDate.getDate() - 7)
   } else if (range === '30d') {

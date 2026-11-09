@@ -1,15 +1,9 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getUserContext, createClient } from '@/utils/supabase/server'
+import { businessDayEnd, businessDayOf, businessDayStart, businessToday, isDayString, shiftDay } from '@/utils/business-day'
 
 export const metadata = { title: 'Cashier & Datewise Collection Report' }
-
-function formatYMD(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
 
 function formatDateReadable(d: Date): string {
   return d.toLocaleDateString('en-IN', {
@@ -56,64 +50,32 @@ export default async function CollectionReportPage({
     staffList = Array.from(staffMap.entries()).map(([id, name]) => ({ id, name }))
   }
 
-  // Calculate Date Range
-  const now = new Date()
-  let startDate: Date
-  let endDate: Date
+  // Calculate Date Range (business days, in IST)
+  const dayEndHour = ctx.restaurant?.day_end_hour ?? 0
+  const today = businessToday(dayEndHour)
+  let fromInputValue = today
+  let toInputValue = today
   let activePreset = date
-  let fromInputValue = ''
-  let toInputValue = ''
 
   if (from || to) {
     activePreset = 'custom'
-    const fromD = from ? new Date(from + 'T00:00:00') : new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)
-    const toD = to ? new Date(to + 'T23:59:59.999') : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
-    startDate = isNaN(fromD.getTime()) ? new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0) : fromD
-    endDate = isNaN(toD.getTime()) ? new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999) : toD
-    fromInputValue = formatYMD(startDate)
-    toInputValue = formatYMD(endDate)
-  } else if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    // Specific single date passed via ?date=YYYY-MM-DD
-    const d = new Date(date + 'T00:00:00')
-    if (!isNaN(d.getTime())) {
-      startDate = new Date(date + 'T00:00:00')
-      endDate = new Date(date + 'T23:59:59.999')
-      fromInputValue = date
-      toInputValue = date
-      activePreset = date === formatYMD(now) ? 'today' : 'custom'
-    } else {
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
-      fromInputValue = formatYMD(now)
-      toInputValue = formatYMD(now)
-    }
+    fromInputValue = isDayString(from) ? from : `${today.slice(0, 8)}01`
+    toInputValue = isDayString(to) ? to : today
+  } else if (isDayString(date)) {
+    fromInputValue = toInputValue = date
+    activePreset = date === today ? 'today' : 'custom'
   } else if (date === 'yesterday') {
-    const yest = new Date(now)
-    yest.setDate(yest.getDate() - 1)
-    startDate = new Date(yest.getFullYear(), yest.getMonth(), yest.getDate(), 0, 0, 0, 0)
-    endDate = new Date(yest.getFullYear(), yest.getMonth(), yest.getDate(), 23, 59, 59, 999)
-    fromInputValue = formatYMD(yest)
-    toInputValue = formatYMD(yest)
+    fromInputValue = toInputValue = shiftDay(today, -1)
   } else if (date === '7d') {
-    const d7 = new Date(now)
-    d7.setDate(d7.getDate() - 6)
-    startDate = new Date(d7.getFullYear(), d7.getMonth(), d7.getDate(), 0, 0, 0, 0)
-    endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
-    fromInputValue = formatYMD(d7)
-    toInputValue = formatYMD(now)
+    fromInputValue = shiftDay(today, -6)
   } else if (date === 'month') {
-    startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)
-    endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
-    fromInputValue = formatYMD(startDate)
-    toInputValue = formatYMD(now)
+    fromInputValue = `${today.slice(0, 8)}01`
   } else {
-    // Default: today
-    startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
-    endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
-    fromInputValue = formatYMD(now)
-    toInputValue = formatYMD(now)
     activePreset = 'today'
   }
+
+  const startDate = businessDayStart(fromInputValue, dayEndHour)
+  const endDate = businessDayEnd(toInputValue, dayEndHour)
 
   const isSingleDay = fromInputValue === toInputValue
 
@@ -209,8 +171,8 @@ export default async function CollectionReportPage({
     else if (mode === 'card') perCashier[cId].card += amount
 
     // Day grouping
-    const orderDate = new Date(o.created_at)
-    const dayKey = formatYMD(orderDate)
+    const dayKey = businessDayOf(new Date(o.created_at), dayEndHour)
+    const orderDate = new Date(`${dayKey}T12:00:00+05:30`)
     if (!perDay[dayKey]) {
       perDay[dayKey] = {
         date: dayKey,
@@ -423,8 +385,8 @@ export default async function CollectionReportPage({
             <span>📅</span>
             <strong>
               {isSingleDay
-                ? `Date: ${formatDateReadable(startDate)}`
-                : `Period: ${formatDateReadable(startDate)} — ${formatDateReadable(endDate)}`}
+                ? `Date: ${formatDateReadable(new Date(`${fromInputValue}T12:00:00+05:30`))}`
+                : `Period: ${formatDateReadable(new Date(`${fromInputValue}T12:00:00+05:30`))} — ${formatDateReadable(new Date(`${toInputValue}T12:00:00+05:30`))}`}
             </strong>
             <span style={{ fontSize: '0.8rem', color: '#64748b', background: '#f1f5f9', padding: '0.2rem 0.5rem', borderRadius: '0.25rem' }}>
               {orders.length} settled transaction{orders.length === 1 ? '' : 's'}
@@ -434,14 +396,12 @@ export default async function CollectionReportPage({
           {isSingleDay && (
             <div style={{ display: 'flex', gap: '0.4rem' }}>
               {(() => {
-                const prev = new Date(startDate)
-                prev.setDate(prev.getDate() - 1)
-                const next = new Date(startDate)
-                next.setDate(next.getDate() + 1)
+                const prev = shiftDay(fromInputValue, -1)
+                const next = shiftDay(fromInputValue, 1)
                 return (
                   <>
                     <Link
-                      href={`/restaurant/reports/collection?date=${formatYMD(prev)}&branch=${branch}&cashier=${cashier}`}
+                      href={`/restaurant/reports/collection?date=${prev}&branch=${branch}&cashier=${cashier}`}
                       style={{
                         padding: '0.25rem 0.6rem',
                         background: '#f8fafc',
@@ -453,10 +413,10 @@ export default async function CollectionReportPage({
                         fontWeight: 600,
                       }}
                     >
-                      ← Prev Day ({formatYMD(prev)})
+                      ← Prev Day ({prev})
                     </Link>
                     <Link
-                      href={`/restaurant/reports/collection?date=${formatYMD(next)}&branch=${branch}&cashier=${cashier}`}
+                      href={`/restaurant/reports/collection?date=${next}&branch=${branch}&cashier=${cashier}`}
                       style={{
                         padding: '0.25rem 0.6rem',
                         background: '#f8fafc',
@@ -468,7 +428,7 @@ export default async function CollectionReportPage({
                         fontWeight: 600,
                       }}
                     >
-                      Next Day ({formatYMD(next)}) →
+                      Next Day ({next}) →
                     </Link>
                   </>
                 )

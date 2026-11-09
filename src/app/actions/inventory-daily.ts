@@ -3,6 +3,12 @@
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { getActionContext } from '@/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { businessDayEnd, businessDayStart, businessToday } from '@/utils/business-day'
+
+async function getDayEndHour(admin: ReturnType<typeof getAdminClient>, restaurantId: string): Promise<number> {
+  const { data } = await admin.from('restaurants').select('*').eq('id', restaurantId).maybeSingle()
+  return data?.day_end_hour ?? 0
+}
 
 function getAdminClient() {
   return createAdminClient(
@@ -61,9 +67,11 @@ export async function getDailyInventoryLedger(
 
   const admin = getAdminClient()
 
-  // Define date boundaries for the selected day in UTC/ISO
-  const startOfDay = `${dateStr}T00:00:00.000Z`
-  const endOfDay = `${dateStr}T23:59:59.999Z`
+  // Define boundaries for the selected business day
+  const dayEndHour = await getDayEndHour(admin, ctx.restaurantId)
+  const startOfDay = businessDayStart(dateStr, dayEndHour).toISOString()
+  const endOfDay = businessDayEnd(dateStr, dayEndHour).toISOString()
+  const startOfDayMs = new Date(startOfDay).getTime()
 
   // 1. Fetch active inventory items for this restaurant
   const { data: rawItems, error: itemsError } = await admin
@@ -125,10 +133,10 @@ export async function getDailyInventoryLedger(
     for (const tx of transactions) {
       if (tx.inventory_item_id !== item.id) continue
 
-      const txDate = tx.created_at
+      const txTime = new Date(tx.created_at).getTime()
       const qty = Number(tx.quantity) || 0
 
-      if (txDate < startOfDay) {
+      if (txTime < startOfDayMs) {
         // Prior to today: rolls into Opening Stock
         opening += qty
       } else {
@@ -231,8 +239,11 @@ export async function submitDailyEODAuditAction(data: {
   const admin = getAdminClient()
 
   // Timestamp for this audit (end of the business day)
-  const isToday = new Date().toISOString().slice(0, 10) === data.date
-  const auditTimestamp = isToday ? new Date().toISOString() : `${data.date}T23:59:00.000Z`
+  const dayEndHour = await getDayEndHour(admin, ctx.restaurantId)
+  const isToday = businessToday(dayEndHour) === data.date
+  const auditTimestamp = isToday
+    ? new Date().toISOString()
+    : new Date(businessDayEnd(data.date, dayEndHour).getTime() - 60000).toISOString()
 
   // 1. Create the stock count record
   const { data: countRow, error: countError } = await admin

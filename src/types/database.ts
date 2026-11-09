@@ -40,6 +40,7 @@ export interface Restaurant {
   address: string | null
   city: string | null
   is_active: boolean
+  day_end_hour?: number
   created_at: string
   updated_at: string
 }

@@ -7,6 +7,7 @@ interface Props {
   branchId: string
   branchName: string
   date: string
+  isToday: boolean
   items: DailyLedgerItem[]
   hasEodAudit: boolean
   auditNotes?: string
@@ -16,6 +17,7 @@ export default function StockAuditForm({
   branchId,
   branchName,
   date,
+  isToday,
   items,
   hasEodAudit,
   auditNotes: initialAuditNotes,
@@ -132,8 +134,6 @@ export default function StockAuditForm({
         : item.expected_closing
     return Math.abs(actual - item.expected_closing) > 0.001
   })
-
-  const isToday = new Date().toISOString().slice(0, 10) === date
 
   return (
     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>

@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getUserContext, createClient } from '@/utils/supabase/server'
 import { getDailyInventoryLedger } from '@/app/actions/inventory-daily'
+import { businessToday, shiftDay } from '@/utils/business-day'
 
 export const metadata = { title: 'Daily Stock Report' }
 
@@ -38,9 +39,9 @@ export default async function DailyStockReportPage({
     : branchList[0]
 
   // 2. Business date setup (defaults to today)
-  const todayStr = new Date().toISOString().slice(0, 10)
-  const yesterdayDate = new Date(Date.now() - 86400000)
-  const yesterdayStr = yesterdayDate.toISOString().slice(0, 10)
+  const dayEndHour = ctx.restaurant?.day_end_hour ?? 0
+  const todayStr = businessToday(dayEndHour)
+  const yesterdayStr = shiftDay(todayStr, -1)
   const selectedDate = requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate) ? requestedDate : todayStr
 
   // 3. Fetch Day-wise Inventory Ledger data

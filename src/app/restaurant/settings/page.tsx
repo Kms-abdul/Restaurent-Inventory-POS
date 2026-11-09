@@ -139,6 +139,30 @@ export default async function RestaurantSettingsPage() {
             />
           </div>
 
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            <label style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0f172a' }}>Business day ends at</label>
+            <select
+              name="day_end_hour"
+              defaultValue={String(restaurant?.day_end_hour ?? 0)}
+              style={{
+                padding: '0.7rem 0.9rem',
+                background: '#ffffff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '0.5rem',
+                color: '#0f172a',
+                fontSize: '0.9rem',
+              }}
+            >
+              <option value="0">12:00 AM (midnight)</option>
+              {[1, 2, 3, 4, 5, 6].map(h => (
+                <option key={h} value={h}>{h}:00 AM</option>
+              ))}
+            </select>
+            <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+              Sales before this time count towards the previous day in reports, and order numbers restart at this time.
+            </span>
+          </div>
+
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
             <button type="submit" className="btn-primary">Save Changes</button>
           </div>

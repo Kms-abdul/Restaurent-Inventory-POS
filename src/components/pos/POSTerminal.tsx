@@ -4,6 +4,7 @@ import { useState, useCallback, useTransition, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { CartItem } from '@/types/database'
+import { businessDayOf, businessToday } from '@/utils/business-day'
 import { createPOSOrder, createKOTOrder, holdOrder, addItemsToHeldOrder, checkoutHeldOrder, checkoutMultipleOrders, listOrders, updateFulfillmentStatus, voidOrder, replaceTableOrder, transferTableOrder, voidTableOrders, reduceOrderItemQty } from '@/app/actions/orders'
 import { printJobAction, getDiscoveredPrintersAction, printDirectToThermalPrinter } from '@/app/actions/print-direct'
 import type { ThermalOrderData } from '@/utils/thermal-printer'
@@ -83,6 +84,7 @@ interface Props {
   canVoid: boolean
   canDiscount: boolean
   isAdmin: boolean
+  dayEndHour?: number
 }
 
 type PaymentMode = 'cash' | 'card' | 'upi' | 'split' | 'due' | 'swiggy_zomato'
@@ -122,6 +124,7 @@ function getFoodEmoji(name: string, categoryName: string = ''): string {
 }
 
 export default function POSTerminal({
+  dayEndHour = 0,
   branchId,
   restaurantId,
   cashierName,
@@ -498,8 +501,8 @@ export default function POSTerminal({
       const orders = (await listOrders(branchId, { limit: 50 })) as RecentOrder[]
       if (orders && orders.length > 0) {
         // Track order number day-by-day: only check today's orders so yesterday's count doesn't inflate today
-        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) // YYYY-MM-DD in local time
-        const todayOrders = orders.filter(o => new Date(o.created_at).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) === todayStr)
+        const todayStr = businessToday(dayEndHour)
+        const todayOrders = orders.filter(o => businessDayOf(new Date(o.created_at), dayEndHour) === todayStr)
         if (todayOrders.length > 0) {
           const highestNo = Math.max(...todayOrders.map(o => o.order_no || 0))
           setNextOrderNo(highestNo + 1)
@@ -582,7 +585,7 @@ export default function POSTerminal({
     } catch (e) {
       console.error('Failed to load orders:', e)
     }
-  }, [branchId])
+  }, [branchId, dayEndHour])
 
   useEffect(() => {
     queueMicrotask(() => {

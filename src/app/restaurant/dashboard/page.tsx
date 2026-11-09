@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getUserContext } from '@/utils/supabase/server'
 import { createClient } from '@/utils/supabase/server'
 import Link from 'next/link'
+import { businessDayStart, businessToday } from '@/utils/business-day'
 
 export default async function RestaurantDashboard() {
   const ctx = await getUserContext()
@@ -10,8 +11,8 @@ export default async function RestaurantDashboard() {
   const supabase = await createClient()
 
   // Load branches, today's orders, and low stock count concurrently in parallel
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  const dayEndHour = ctx.restaurant?.day_end_hour ?? 0
+  const today = businessDayStart(businessToday(dayEndHour), dayEndHour)
 
   const [branchesRes, ordersRes, lowStockRes] = await Promise.all([
     supabase

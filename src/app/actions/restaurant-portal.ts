@@ -634,13 +634,17 @@ export async function updateRestaurantSettingsAction(formData: FormData) {
   const city = (formData.get('city') as string)?.trim() || null
   const address = (formData.get('address') as string)?.trim() || null
 
+  const dayEndHour = Number(formData.get('day_end_hour') ?? 0)
+
   if (!name) throw new Error('Restaurant name is required')
+  if (!Number.isInteger(dayEndHour) || dayEndHour < 0 || dayEndHour > 6) throw new Error('Invalid business day end time')
 
   const admin = getAdminClient()
   const { error } = await admin
     .from('restaurants')
     .update({
       name,
+      day_end_hour: dayEndHour,
       phone,
       email,
       city,

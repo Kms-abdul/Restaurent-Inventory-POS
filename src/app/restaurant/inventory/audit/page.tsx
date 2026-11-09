@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { getUserContext, createClient } from '@/utils/supabase/server'
 import StockAuditForm from '@/components/inventory/StockAuditForm'
 import { getDailyInventoryLedger } from '@/app/actions/inventory-daily'
+import { businessDayOf, businessToday, shiftDay } from '@/utils/business-day'
 
 export const metadata = { title: 'Daily Stock Audit' }
 
@@ -39,9 +40,9 @@ export default async function StockAuditPage({
     : branchList[0]
 
   // 2. Determine selected business date (default to today)
-  const todayStr = new Date().toISOString().slice(0, 10)
-  const yesterdayDate = new Date(Date.now() - 86400000)
-  const yesterdayStr = yesterdayDate.toISOString().slice(0, 10)
+  const dayEndHour = ctx.restaurant?.day_end_hour ?? 0
+  const todayStr = businessToday(dayEndHour)
+  const yesterdayStr = shiftDay(todayStr, -1)
   const selectedDate = requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate) ? requestedDate : todayStr
 
   // 3. Fetch Day-wise Inventory Ledger
@@ -174,6 +175,7 @@ export default async function StockAuditPage({
         branchId={activeBranch.id}
         branchName={activeBranch.name}
         date={selectedDate}
+        isToday={selectedDate === todayStr}
         items={ledger.items}
         hasEodAudit={ledger.has_eod_audit}
         auditNotes={ledger.audit_notes}
@@ -200,7 +202,7 @@ export default async function StockAuditPage({
               </thead>
               <tbody>
                 {(recentCounts ?? []).map((sc: any) => {
-                  const auditDateStr = new Date(sc.counted_at).toISOString().slice(0, 10)
+                  const auditDateStr = businessDayOf(new Date(sc.counted_at), dayEndHour)
                   const itemsWithVariance = (sc.stock_count_items ?? []).filter((item: any) => Math.abs(Number(item.variance_qty)) > 0.001)
                   return (
                     <tr key={sc.id}>
