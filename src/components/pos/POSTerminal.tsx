@@ -86,13 +86,12 @@ interface Props {
 }
 
 type PaymentMode = 'cash' | 'card' | 'upi' | 'split' | 'due' | 'swiggy_zomato'
-type ActiveTab = 'order' | 'tables' | 'kot' | 'kds' | 'printer'
+type ActiveTab = 'order' | 'tables' | 'kot' | 'printer'
 
 const POS_TABS: { id: ActiveTab; label: string; icon: string }[] = [
   { id: 'order', label: 'POS Menu', icon: '📋' },
   { id: 'tables', label: 'Live Tables', icon: '🍽️' },
   { id: 'kot', label: 'KOT View', icon: '🖨️' },
-  { id: 'kds', label: 'Kitchen KDS', icon: '👨‍🍳' },
   { id: 'printer', label: 'Printer', icon: '⚙️' },
 ]
 
@@ -321,8 +320,6 @@ export default function POSTerminal({
   } | null>(null)
 
   // Orders list for KDS and KOT
-  const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([])
-  const [autoPrintKOT, setAutoPrintKOT] = useState(true)
 
   // Tracks which individual order action is in-flight (for per-button loading states)
   const [pendingAction, setPendingAction] = useState<string | null>(null)
@@ -499,7 +496,6 @@ export default function POSTerminal({
   const loadOrders = useCallback(async () => {
     try {
       const orders = (await listOrders(branchId, { limit: 50 })) as RecentOrder[]
-      setRecentOrders(orders || [])
       if (orders && orders.length > 0) {
         // Track order number day-by-day: only check today's orders so yesterday's count doesn't inflate today
         const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) // YYYY-MM-DD in local time
@@ -1826,54 +1822,6 @@ export default function POSTerminal({
 
     return menuItems
   }, [menuItems, searchQuery, selectedCategory])
-
-  // KDS Aggregated Chef Items (To Cook & To Pack)
-  // Only include orders that are waiting to be cooked / packed (exclude ready/packed and served)
-  const activeKDSOrders = useMemo(
-    () => recentOrders.filter(o => {
-      if (o.fulfillment === 'ready' || o.fulfillment === 'served' || o.status === 'voided') return false
-      if (o.status === 'active') return true
-      // Checked-out dine-in/held orders drop off even if the chef never marked them packed;
-      // paid-upfront takeaways stay until packed because the kitchen still has to cook them
-      const isDineIn = Boolean((o.table_number || '').trim() || /round|table|hold|\bT\d+\b/i.test(o.notes || ''))
-      return !isDineIn
-    }),
-    [recentOrders]
-  )
-
-  const chefAggregatedEntries = useMemo(() => {
-    const aggregatedItems = new Map<string, { qty: number; category: string }>()
-    activeKDSOrders.forEach(o => {
-      (o.order_items ?? []).forEach(oi => {
-        const itemName = oi.item_name_at_sale || oi.item_name || 'Item'
-        const itemCat = oi.category_at_sale || oi.category || 'General'
-        const current = aggregatedItems.get(itemName) ?? { qty: 0, category: itemCat }
-        current.qty += oi.qty || 1
-        aggregatedItems.set(itemName, current)
-      })
-    })
-    return Array.from(aggregatedItems.entries())
-  }, [activeKDSOrders])
-
-  // Mark packed action: immediately drop from KDS screen and reduce item counts
-  const handleMarkPacked = async (orderId: string) => {
-    if (pendingAction === orderId) return // prevent double-clicks
-    setPendingAction(orderId)
-    // Optimistic UI update: instantly mark ready/packed so it removes from Packer view
-    // and chef count dynamically drops
-    setRecentOrders(prev =>
-      prev.map(o => (o.id === orderId ? { ...o, fulfillment: 'ready' } : o))
-    )
-    try {
-      await updateFulfillmentStatus(orderId, 'ready')
-    } catch (err) {
-      console.error('Failed to update fulfillment status:', err)
-    } finally {
-      setPendingAction(null)
-    }
-    // Refresh in background — optimistic update already handled the visible state
-    void loadOrders()
-  }
 
 
 
@@ -3387,104 +3335,6 @@ export default function POSTerminal({
             )}
           </div>
         )}
-
-        {/* TAB 3: KITCHEN KDS (Screenshot 3) */}
-        {activeTab === 'kds' && (
-          <div className="kds-tab-layout">
-            <div className="kds-top-bar">
-              <div className="kds-heading">
-                <span>👨‍🍳</span>
-                <h2>Kitchen Display System</h2>
-              </div>
-              <div className="kds-controls">
-                <label className="toggle-label">
-                  <input
-                    type="checkbox"
-                    checked={autoPrintKOT}
-                    onChange={e => setAutoPrintKOT(e.target.checked)}
-                  />
-                  <span>Auto-Print KOTs</span>
-                </label>
-                <button
-                  type="button"
-                  onClick={loadOrders}
-                  className="kds-refresh-btn"
-                >
-                  🔄 Refresh
-                </button>
-              </div>
-            </div>
-
-            <div className="kds-columns-grid">
-              {/* Column 1: Chef View: To Cook (Red) */}
-              <div className="kds-chef-column">
-                <div className="kds-chef-header">
-                  🔥 Chef View: To Cook
-                </div>
-                <div className="kds-chef-list">
-                  {chefAggregatedEntries.length === 0 ? (
-                    <div className="kds-empty-msg">No pending orders to cook.</div>
-                  ) : (
-                    chefAggregatedEntries.map(([name, data]) => (
-                      <div key={name} className="chef-item-row">
-                        <div>
-                          <span className="chef-item-name">{name}</span>
-                          <span className="chef-item-cat">({data.category || 'General'})</span>
-                        </div>
-                        <span className="chef-item-qty">{data.qty}</span>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {/* Column 2: Packer View: To Pack (Blue) */}
-              <div className="kds-packer-column">
-                <div className="kds-packer-header">
-                  📦 Packer View: To Pack
-                </div>
-                <div className="kds-packer-list">
-                  {activeKDSOrders.length === 0 ? (
-                    <div className="kds-empty-msg">All orders packed and served.</div>
-                  ) : (
-                    activeKDSOrders.map(o => (
-                      <div key={o.id} className="packer-order-card">
-                        <div className="packer-order-top">
-                          <span className="packer-order-title">ORDER #{o.order_no}</span>
-                          <span className="packer-order-time">
-                            {new Date(o.created_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                          </span>
-                        </div>
-                        <div className="packer-order-items">
-                          {(o.order_items ?? []).map(oi => {
-                            const itemName = oi.item_name_at_sale || oi.item_name || 'Item'
-                            const itemCat = oi.category_at_sale || oi.category || ''
-                            return (
-                              <div key={oi.id} className="packer-item-row">
-                                <span>• {itemName} {itemCat ? <small>({itemCat})</small> : null}</span>
-                                <strong>{oi.qty || 1}</strong>
-                              </div>
-                            )
-                          })}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleMarkPacked(o.id)}
-                          disabled={pendingAction === o.id}
-                          className="btn-mark-packed"
-                        >
-                          {pendingAction === o.id ? '⏳ Packing...' : '✓ Mark Packed'}
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-
 
         {/* TAB 7: PRINTER CONFIGURATION */}
         {activeTab === 'printer' && (
