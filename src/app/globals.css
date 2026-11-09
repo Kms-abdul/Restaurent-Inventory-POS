@@ -5042,3 +5042,85 @@ button:disabled:active {
 }
 .btn-save-no-kot:hover:not(:disabled) { background: #eef2ff; }
 .btn-save-no-kot:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Restaurant admin: the phone top bar must never show on desktop */
+@media screen and (min-width: 901px) {
+  .ra-mobile-header,
+  .ra-mobile-backdrop {
+    display: none !important;
+  }
+}
+
+/* POS: extra charge entry */
+.extra-charge-row { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.5rem; }
+.extra-charge-label { font-size: 0.78rem; font-weight: 700; color: #475569; white-space: nowrap; }
+.extra-charge-input { flex: 1; min-width: 0; padding: 0.35rem 0.5rem; border: 1px solid #cbd5e1; border-radius: 0.4rem; font-size: 0.82rem; color: #0f172a; background: #fff; }
+.extra-charge-btn { padding: 0.35rem 0.7rem; background: #4f46e5; color: #fff; border: none; border-radius: 0.4rem; font-size: 0.78rem; font-weight: 700; cursor: pointer; }
+.extra-charge-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* POS: compact extra amount beside the total */
+.total-with-extra { display: inline-flex; align-items: center; gap: 0.45rem; }
+.extra-add-btn { padding: 0.15rem 0.45rem; background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; border-radius: 0.35rem; font-size: 0.7rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.extra-inline { display: inline-flex; align-items: center; gap: 0.2rem; }
+.extra-inline-input { width: 3.75rem; padding: 0.15rem 0.3rem; border: 1px solid #a5b4fc; border-radius: 0.35rem; font-size: 0.8rem; color: #0f172a; background: #fff; }
+.extra-inline-ok { padding: 0.15rem 0.4rem; background: #4f46e5; color: #fff; border: none; border-radius: 0.35rem; font-size: 0.75rem; font-weight: 700; cursor: pointer; }
+
+/* POS desktop: compact order panel so more cart items are visible without scrolling */
+.order-right-panel { padding: 0.6rem 0.7rem !important; }
+.order-right-panel .cart-top-bar { margin-bottom: 0.3rem !important; padding-bottom: 0.3rem !important; }
+.order-right-panel .cart-items-container { gap: 0.25rem !important; margin-bottom: 0.3rem !important; }
+.order-right-panel .cart-item-card { padding: 0.25rem 0.5rem !important; }
+.order-right-panel .cart-item-row-top { margin-bottom: 0.05rem !important; }
+.order-right-panel .cart-item-name { font-size: 0.78rem !important; line-height: 1.15 !important; }
+.order-right-panel .cart-item-calc { font-size: 0.7rem !important; }
+.order-right-panel .stepper-btn { width: 19px !important; height: 19px !important; }
+
+.order-right-panel .cart-footer { padding-top: 0.45rem !important; gap: 0.45rem !important; }
+
+.order-right-panel .cart-discount-section { padding: 0.3rem 0.35rem !important; gap: 0.1rem !important; }
+.order-right-panel .discount-title { display: none !important; }
+.order-right-panel .btn-discount-relative,
+.order-right-panel .btn-discount-preset {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0.15rem !important;
+  height: 34px !important;
+  padding: 0 0.15rem !important;
+  font-size: 0.74rem !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+}
+
+.order-right-panel .cart-total-row { font-size: 1.05rem !important; line-height: 1.15 !important; }
+.order-right-panel .cart-total-value { font-size: 1.3rem !important; line-height: 1.15 !important; }
+
+.order-right-panel .payment-mode-section { gap: 0.15rem !important; }
+.order-right-panel .payment-label { display: none !important; }
+.order-right-panel .payment-buttons-grid { gap: 0.25rem !important; }
+.order-right-panel .payment-btn { height: 36px !important; padding: 0 0.15rem !important; font-size: 0.78rem !important; }
+
+.order-right-panel .dinein-cart-panel { margin: 0 !important; padding: 0 !important; gap: 0.2rem !important; }
+.order-right-panel .dinein-picker-label { display: none !important; }
+.order-right-panel .table-quick-picker { gap: 0.25rem !important; margin: 0 !important; }
+.order-right-panel .table-quick-btn { height: 36px !important; min-height: 36px !important; padding: 0 0.5rem !important; font-size: 0.82rem !important; }
+.order-right-panel .table-avail-pill { padding: 0.1rem 0.4rem !important; font-size: 0.7rem !important; margin: 0 !important; }
+
+.order-right-panel .action-2btn-row { margin-top: 0.1rem !important; gap: 0.25rem !important; }
+.order-right-panel .action-2btn-row .btn-action-kot,
+.order-right-panel .action-2btn-row .btn-action-checkout,
+.order-right-panel .action-2btn-row .btn-action-swiggy {
+  flex-direction: row !important;
+  height: 46px !important;
+  padding: 0 0.15rem !important;
+  gap: 0.2rem !important;
+  font-size: 0.8rem !important;
+  white-space: nowrap !important;
+}
+.order-right-panel .action-2btn-row button span { font-size: 0.72rem !important; }
+
+.order-right-panel .save-clear-row { display: grid; grid-template-columns: 2fr 1fr; gap: 0.35rem; }
+.order-right-panel .btn-save-no-kot,
+.order-right-panel .btn-clear-order { display: block !important; height: 36px !important; margin: 0 !important; padding: 0 0.4rem !important; font-size: 0.76rem !important; }
+.order-right-panel .btn-clear-order { background: #ffffff !important; color: #475569 !important; border: 1px solid #cbd5e1 !important; border-radius: 0.5rem !important; font-weight: 700 !important; }

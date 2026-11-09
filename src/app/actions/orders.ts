@@ -3,6 +3,7 @@
 import { createClient, createServiceClient, getActionContext, getUserContext } from '@/utils/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
+import { EXTRA_CHARGE_NAME } from '@/utils/extra-charge'
 import type { CartItem, PaymentMode } from '@/types/database'
 
 /**
@@ -20,6 +21,9 @@ export async function createKOTPrintJob(params: {
   notes?: string
   items: { name: string; qty: number; notes?: string }[]
 }) {
+  const kotItems = params.items.filter(i => i.name !== EXTRA_CHARGE_NAME)
+  if (kotItems.length === 0) return
+
   const ctx = await getActionContext()
   if (!ctx) return // silent — don't block checkout
 
@@ -33,7 +37,7 @@ export async function createKOTPrintJob(params: {
     table_number:    params.tableNumber ?? null,
     created_at:      new Date().toISOString(),
     order_notes:     params.notes ?? null,
-    items: params.items.map(i => ({
+    items: kotItems.map(i => ({
       name:  i.name,
       qty:   i.qty,
       notes: i.notes ?? null,
@@ -87,7 +91,7 @@ export async function createPOSOrder(params: {
     p_terminal_id: null,
     p_notes: params.notes ?? null,
     p_items: params.items.map(item => ({
-      menu_item_id: item.menuItemId,
+      menu_item_id: item.menuItemId || null,
       item_name: item.name,
       category: item.category,
       unit_price: item.unitPrice,
@@ -199,7 +203,7 @@ export async function createKOTOrder(params: {
     p_terminal_id: null,
     p_notes: combinedNotes || null,
     p_items: params.items.map(item => ({
-      menu_item_id: item.menuItemId,
+      menu_item_id: item.menuItemId || null,
       item_name: item.name,
       category: item.category,
       unit_price: item.unitPrice,
@@ -479,7 +483,7 @@ export async function checkoutMultipleOrders(params: {
   return { success: true }
 }
 
-export async function listOrders(branchId: string, filters?: { status?: string; limit?: number }) {
+export async function listOrders(branchId: string, filters?: { status?: string; limit?: number; since?: string }) {
   const ctx = await getActionContext()
   if (!ctx) throw new Error('Unauthorized')
 
@@ -493,6 +497,9 @@ export async function listOrders(branchId: string, filters?: { status?: string; 
 
   if (filters?.status) {
     query = query.eq('status', filters.status)
+  }
+  if (filters?.since) {
+    query = query.gte('created_at', filters.since)
   }
 
   const { data, error } = await query

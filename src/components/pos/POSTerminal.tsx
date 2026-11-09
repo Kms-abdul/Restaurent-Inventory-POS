@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { CartItem } from '@/types/database'
 import { businessDayOf, businessToday } from '@/utils/business-day'
+import { EXTRA_CHARGE_NAME } from '@/utils/extra-charge'
+import PrintBillsTab, { type BillOrder } from './PrintBillsTab'
 import { createPOSOrder, createKOTOrder, holdOrder, addItemsToHeldOrder, checkoutHeldOrder, checkoutMultipleOrders, listOrders, updateFulfillmentStatus, voidOrder, replaceTableOrder, transferTableOrder, voidTableOrders, reduceOrderItemQty } from '@/app/actions/orders'
 import { printJobAction, getDiscoveredPrintersAction, printDirectToThermalPrinter } from '@/app/actions/print-direct'
 import type { ThermalOrderData } from '@/utils/thermal-printer'
@@ -88,12 +90,13 @@ interface Props {
 }
 
 type PaymentMode = 'cash' | 'card' | 'upi' | 'split' | 'due' | 'swiggy_zomato'
-type ActiveTab = 'order' | 'tables' | 'kot' | 'printer'
+type ActiveTab = 'order' | 'tables' | 'kot' | 'bills' | 'printer'
 
 const POS_TABS: { id: ActiveTab; label: string; icon: string }[] = [
   { id: 'order', label: 'POS Menu', icon: '📋' },
   { id: 'tables', label: 'Live Tables', icon: '🍽️' },
   { id: 'kot', label: 'KOT View', icon: '🖨️' },
+  { id: 'bills', label: 'Print Bills', icon: '🧾' },
   { id: 'printer', label: 'Printer', icon: '⚙️' },
 ]
 
@@ -376,6 +379,10 @@ export default function POSTerminal({
   // Status feedback for the 3 action buttons
   const [kotStatus, setKotStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle')
   const [noKotStatus, setNoKotStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle')
+  const [extraChargeInput, setExtraChargeInput] = useState('')
+  const [showExtraInput, setShowExtraInput] = useState(false)
+  const [checkoutExtra, setCheckoutExtra] = useState('')
+  const checkoutExtraPaise = Math.max(0, Math.round((parseFloat(checkoutExtra) || 0) * 100))
   const [dineInStatus, setDineInStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle')
   const [checkoutStatus, setCheckoutStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle')
   // Checkout confirmation dialog: single takeaway order or a full dine-in table
@@ -815,6 +822,47 @@ export default function POSTerminal({
   const removeFromCart = useCallback((menuItemId: string) => {
     setCart(prev => prev.filter(c => c.menuItemId !== menuItemId))
   }, [])
+
+  // Appends an extra amount to the current order's single Extra Charge line
+  const applyExtraCharge = () => {
+    const paise = Math.max(0, Math.round((parseFloat(extraChargeInput) || 0) * 100))
+    if (paise > 0) {
+      setCart(prev => {
+        const total = paise + (prev.find(c => c.name === EXTRA_CHARGE_NAME)?.lineTotal ?? 0)
+        return [
+          ...prev.filter(c => c.name !== EXTRA_CHARGE_NAME),
+          { menuItemId: '', name: EXTRA_CHARGE_NAME, category: 'Extra', unitPrice: total, qty: 1, lineTotal: total },
+        ]
+      })
+    }
+    setExtraChargeInput('')
+    setShowExtraInput(false)
+  }
+
+  const renderExtraCharge = () => {
+    if (cart.length === 0) return null
+    if (!showExtraInput) {
+      return <button type="button" className="extra-add-btn" onClick={() => setShowExtraInput(true)} title="Add an extra amount to this bill">+ Extra</button>
+    }
+    return (
+      <span className="extra-inline">
+        <input
+          type="number"
+          min="0"
+          step="1"
+          inputMode="decimal"
+          autoFocus
+          value={extraChargeInput}
+          onChange={e => setExtraChargeInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') applyExtraCharge() }}
+          placeholder="₹"
+          className="extra-inline-input"
+          aria-label="Extra amount"
+        />
+        <button type="button" className="extra-inline-ok" onClick={applyExtraCharge} aria-label="Add extra amount">✓</button>
+      </span>
+    )
+  }
 
   const clearDiscount = () => {
     setDiscountType('percent')
@@ -1474,7 +1522,9 @@ export default function POSTerminal({
   const handleCheckoutPending = () => {
     if (!checkoutTarget) return
 
-    const { orders, totalAmount } = checkoutTarget
+    const { orders } = checkoutTarget
+    const extraPaise = checkoutExtraPaise
+    const totalAmount = checkoutTarget.totalAmount + extraPaise
     const targetRupees = totalAmount / 100
     const isZero = totalAmount === 0
     const mode = isZero ? 'cash' : paymentMode
@@ -1492,6 +1542,17 @@ export default function POSTerminal({
     setCheckoutStatus('pending')
     startTransition(async () => {
       try {
+        let billOrders = orders
+        if (extraPaise > 0) {
+          const extraItem: CartItem = { menuItemId: '', name: EXTRA_CHARGE_NAME, category: 'Extra', unitPrice: extraPaise, qty: 1, lineTotal: extraPaise }
+          const target = orders[0]
+          await addItemsToHeldOrder({ orderId: target.id, branchId, newItems: [extraItem], orderNo: target.order_no })
+          billOrders = orders.map(o => o.id === target.id ? { ...o, total_amount: o.total_amount + extraPaise, items: [...o.items, extraItem] } : o)
+          // Keep it saved once only if the settle below fails and staff retry
+          setCheckoutTarget(t => t && { ...t, orders: billOrders, totalAmount })
+          setCheckoutExtra('')
+        }
+
         const splitPaise = (!isZero && mode === 'split') ? {
           cash: Math.round((parseFloat(splitCash) || 0) * 100),
           upi: Math.round((parseFloat(splitUpi) || 0) * 100),
@@ -1528,7 +1589,7 @@ export default function POSTerminal({
         }
 
         // Build all items for the receipt (merged across rounds)
-        const allItems = orders.flatMap(o => o.items)
+        const allItems = billOrders.flatMap(o => o.items)
         const printData: ThermalOrderData = {
           orderNumber: orders[0].order_no,
           createdAt: new Date().toISOString(),
@@ -1554,6 +1615,7 @@ export default function POSTerminal({
         setSplitUpi('')
         setSplitCard('')
         setCheckoutTarget(null)
+        setCheckoutExtra('')
         setCheckoutStatus('success')
         setTimeout(() => setCheckoutStatus('idle'), 3000)
         void loadOrders()
@@ -1563,6 +1625,29 @@ export default function POSTerminal({
         setTimeout(() => setCheckoutStatus('idle'), 3000)
       }
     })
+  }
+
+  const printBill = async (o: BillOrder) => {
+    const items = (o.order_items ?? []).map(i => ({
+      name: i.item_name_at_sale || i.item_name || 'Item',
+      quantity: i.qty ?? 1,
+      price: (i.unit_price_at_sale ?? i.unit_price ?? 0) / 100,
+      lineTotal: (i.line_total ?? 0) / 100,
+    }))
+    const tagline = printerSettings.tagline || branchName
+    const res = await printDocument('RECEIPT', {
+      orderNumber: o.order_no,
+      createdAt: o.created_at,
+      restaurantName: printerSettings.headerText || restaurantName || 'RESTAURANT',
+      branchName: o.table_number ? `${tagline} | ${o.table_number}` : tagline,
+      cashierName,
+      subtotal: (o.total_amount + (o.discount_amount ?? 0)) / 100,
+      discount: (o.discount_amount ?? 0) / 100,
+      total: o.total_amount / 100,
+      paymentMode: o.status === 'active' ? 'Pending' : o.payment_mode === 'swiggy_zomato' ? 'Swiggy/Zomato' : (o.payment_mode ?? 'Pending'),
+      items,
+    })
+    if (!res.success) throw new Error(res.error || 'Print failed')
   }
 
   // Legacy alias
@@ -1723,7 +1808,9 @@ export default function POSTerminal({
   }
 
   // Print order: local bridge → browser print (silent with Chrome --kiosk-printing) → cloud queue
-  const printDocument = async (type: 'KOT' | 'RECEIPT', data: ThermalOrderData): Promise<{ success: boolean; error?: string }> => {
+  const printDocument = async (type: 'KOT' | 'RECEIPT', rawData: ThermalOrderData): Promise<{ success: boolean; error?: string }> => {
+    const data = type === 'KOT' ? { ...rawData, items: rawData.items.filter(i => i.name !== EXTRA_CHARGE_NAME) } : rawData
+    if (data.items.length === 0) return { success: true }
     if (await tryDirectLocalBridgePrint(type, data)) return { success: true }
     if (printerSettings.browserPrintFallback) {
       await printViaBrowser(type, data, {
@@ -2419,8 +2506,11 @@ export default function POSTerminal({
 
                     <div className="cart-total-row">
                       <span>Total:</span>
-                      <span className={`cart-total-value ${finalTotalRupees === 0 && cart.length > 0 ? 'zero-total-val' : ''}`}>
+                      <span className="total-with-extra">
+                        {renderExtraCharge()}
+                        <span className={`cart-total-value ${finalTotalRupees === 0 && cart.length > 0 ? 'zero-total-val' : ''}`}>
                         ₹{finalTotalRupees.toFixed(2)}
+                      </span>
                       </span>
                     </div>
 
@@ -2593,6 +2683,7 @@ export default function POSTerminal({
                       </div>
                     </div>
 
+                    <div className="save-clear-row">
                     <button
                       type="button"
                       disabled={cart.length === 0 || isPending}
@@ -2604,6 +2695,7 @@ export default function POSTerminal({
                     </button>
 
                     <button type="button" onClick={clearCart} className="btn-clear-order">Clear order</button>
+                    </div>
 
                   </div>
                 </div>
@@ -2921,8 +3013,11 @@ export default function POSTerminal({
                       {/* Total Line */}
                       <div className="cart-total-row" style={{ padding: '0.35rem 0' }}>
                         <span>Grand Total:</span>
-                        <span className={`cart-total-value ${finalTotalRupees === 0 ? 'zero-total-val' : ''}`}>
+                        <span className="total-with-extra">
+                          {renderExtraCharge()}
+                          <span className={`cart-total-value ${finalTotalRupees === 0 ? 'zero-total-val' : ''}`}>
                           ₹{finalTotalRupees.toFixed(2)}
+                        </span>
                         </span>
                       </div>
 
@@ -3239,7 +3334,7 @@ export default function POSTerminal({
                 </div>
               )}
               <div className="checkout-dialog-total">
-                Total: <strong>₹{(checkoutTarget.totalAmount / 100).toFixed(2)}</strong>
+                Total: <strong>₹{((checkoutTarget.totalAmount + checkoutExtraPaise) / 100).toFixed(2)}</strong>
               </div>
               <div className="checkout-dialog-items">
                 {checkoutTarget.orders.flatMap((o, ri) =>
@@ -3251,15 +3346,28 @@ export default function POSTerminal({
                   ))
                 )}
               </div>
+              <div className="extra-charge-row" style={{ marginTop: '0.6rem' }}>
+                <span className="extra-charge-label">➕ Extra ₹</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputMode="decimal"
+                  value={checkoutExtra}
+                  onChange={e => setCheckoutExtra(e.target.value)}
+                  placeholder="Customization amount"
+                  className="extra-charge-input"
+                />
+              </div>
               <div className="payment-buttons-grid" style={{ margin: '0.75rem 0' }}>
                 <button type="button" onClick={() => setPaymentMode('cash')} className={`payment-btn ${paymentMode === 'cash' ? 'active' : ''}`}>💵 Cash</button>
                 <button type="button" onClick={() => setPaymentMode('due')} className={`payment-btn ${paymentMode === 'due' ? 'active' : ''}`}>🕒 Due</button>
                 <button type="button" onClick={() => setPaymentMode('upi')} className={`payment-btn ${paymentMode === 'upi' ? 'active' : ''}`}>📱 UPI</button>
-                <button type="button" onClick={() => handleSelectSplit(checkoutTarget.totalAmount / 100)} className={`payment-btn ${paymentMode === 'split' ? 'active-split' : ''}`}>🔀 Split</button>
+                <button type="button" onClick={() => handleSelectSplit((checkoutTarget.totalAmount + checkoutExtraPaise) / 100)} className={`payment-btn ${paymentMode === 'split' ? 'active-split' : ''}`}>🔀 Split</button>
               </div>
-              {renderSplitPaymentBox(checkoutTarget.totalAmount / 100)}
+              {renderSplitPaymentBox((checkoutTarget.totalAmount + checkoutExtraPaise) / 100)}
               <div className="checkout-dialog-btns">
-                <button type="button" className="btn-dialog-cancel" onClick={() => setCheckoutTarget(null)}>Cancel</button>
+                <button type="button" className="btn-dialog-cancel" onClick={() => { setCheckoutTarget(null); setCheckoutExtra('') }}>Cancel</button>
                 <button
                   type="button"
                   className="btn-dialog-confirm"
@@ -3278,6 +3386,11 @@ export default function POSTerminal({
           <div className="live-orders-desktop-wrapper">
             {renderTablesScreen()}
           </div>
+        )}
+
+        {/* PRINT BILLS: reprint any of today's bills on request */}
+        {activeTab === 'bills' && (
+          <PrintBillsTab branchId={branchId} dayEndHour={dayEndHour} onPrint={printBill} />
         )}
 
         {/* TAB 3: KOT SCREEN */}
@@ -3402,7 +3515,7 @@ export default function POSTerminal({
                         checked={printerSettings.enableReceiptPrint}
                         onChange={e => updatePrinterSettings({ enableReceiptPrint: e.target.checked })}
                       />
-                      <span>Enable Customer Bill Receipt Print</span>
+                      <span>Auto-Print Customer Bill at Checkout</span>
                     </label>
 
                     <label className="checkbox-item">
