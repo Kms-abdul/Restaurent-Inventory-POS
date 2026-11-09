@@ -51,7 +51,6 @@ export function buildReceipt(printer: ThermalPrinter, data: ThermalOrderData) {
 
   const title = data.restaurantName || 'CHINESE NAWAB'
   printer.println(title.toUpperCase())
-  printer.bold(false)
 
   if (data.branchName) {
     printer.println(data.branchName)
@@ -105,9 +104,7 @@ export function buildReceipt(printer: ThermalPrinter, data: ThermalOrderData) {
   }
 
   printer.setTextDoubleHeight()
-  printer.bold(true)
   printer.leftRight('TOTAL', `Rs.${money(data.total)}`)
-  printer.bold(false)
   printer.setTextNormal()
 
   if (data.paymentMode && data.paymentMode !== 'Pending') {
@@ -125,6 +122,7 @@ export function buildReceipt(printer: ThermalPrinter, data: ThermalOrderData) {
   printer.println(`Thank You! Visit Again. ${title}`)
   printer.newLine()
   printer.newLine()
+  printer.bold(false)
   printer.cut()
 }
 

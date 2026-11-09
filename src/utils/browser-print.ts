@@ -69,7 +69,7 @@ export function buildHtml(type: 'KOT' | 'RECEIPT', data: ThermalOrderData, opts:
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { width: ${widthMm}mm; padding: 0 ${(widthMm - printableMm) / 2}mm 8mm; color: #000;
       font-family: 'Courier New', Courier, monospace; font-size: ${(printableMm / width / 0.6).toFixed(3)}mm; line-height: 1.05;
-      overflow: hidden; }
+      overflow: hidden; ${type === 'RECEIPT' ? 'font-weight: bold; -webkit-text-stroke: 0.05mm #000;' : ''} }
     .c { text-align: center; } .r { text-align: right; } .b { font-weight: bold; }
     .lr { display: flex; justify-content: space-between; }
     .tbl { display: grid; grid-template-columns: 62% 13% 25%; }
